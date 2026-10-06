@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirTortilla — Panel de Vuelos y Reservas</title>
+    <meta name="description" content="Panel de gestión de vuelos y reservas de la aerolínea AirTortilla. Consulta, filtra y visualiza todos los datos de pasajeros.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+        :root {
+            --bg-deep: #0a0e1a;
+            --bg-surface: #111827;
+            --bg-card: rgba(30, 41, 70, 0.6);
+            --bg-card-hover: rgba(40, 55, 95, 0.7);
+            --border: rgba(99, 130, 200, 0.15);
+            --border-accent: rgba(99, 180, 255, 0.3);
+            --text-primary: #e8ecf4;
+            --text-secondary: #8b95b0;
+            --text-muted: #5a6580;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-violet: #8b5cf6;
+            --accent-amber: #f59e0b;
+            --accent-emerald: #10b981;
+            --accent-rose: #f43f5e;
+            --gradient-hero: linear-gradient(135deg, #1e3a5f 0%, #0f172a 50%, #1a1040 100%);
+            --gradient-accent: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            --shadow-glow: 0 0 60px rgba(59, 130, 246, 0.08);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.06) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+                        radial-gradient(ellipse at 50% 80%, rgba(6, 182, 212, 0.04) 0%, transparent 50%);
+            animation: bgShift 20s ease-in-out infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        @keyframes bgShift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(-2%, 1%) rotate(1deg); }
+            66% { transform: translate(1%, -1%) rotate(-0.5deg); }
+        }
+
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 24px 60px;
+        }
+
+        /* ── Hero Header ── */
+        .hero {
+            text-align: center;
+            padding: 48px 20px 40px;
+            margin-bottom: 36px;
+        }
+
+        .hero-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .hero-logo .icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-accent);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
+        }
+
+        .hero h1 {
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #e8ecf4 0%, #94a8d0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            margin-top: 8px;
+            font-weight: 300;
+        }
+
+        /* ── Stats Bar ── */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--border-accent);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: var(--gradient-accent);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* ── Filter Panel ── */
+        .filter-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            margin-bottom: 32px;
+            backdrop-filter: blur(20px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .filter-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-title::before {
+            content: '⚙';
+            font-size: 1rem;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xs);
+            padding: 10px 14px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            transition: all 0.25s ease;
+            outline: none;
+        }
+
+        .filter-group input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        .filter-group select option {
+            background: var(--bg-surface);
+            color: var(--text-primary);
+        }
+
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border-radius: var(--radius-xs);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.25s ease;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-primary {
+            background: var(--gradient-accent);
+            color: white;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-ghost {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-primary);
+        }
+
+        /* ── Passenger Cards ── */
+        .cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .passenger-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            backdrop-filter: blur(20px);
+            transition: all 0.35s ease;
+            animation: cardIn 0.5s ease both;
+        }
+
+        .passenger-card:hover {
+            border-color: var(--border-accent);
+            box-shadow: 0 8px 40px rgba(59, 130, 246, 0.1);
+            transform: translateY(-2px);
+        }
+
+        @keyframes cardIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .card-top-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .avatar-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .avatar-violet { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+        .avatar-cyan { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+        .avatar-emerald { background: linear-gradient(135deg, #10b981, #059669); }
+        .avatar-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .avatar-rose { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+
+        .passenger-info h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .passenger-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .total-badge {
+            background: rgba(59, 130, 246, 0.12);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            color: #60a5fa;
+            padding: 8px 18px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: -0.01em;
+        }
+
+        /* ── Table ── */
+        .flights-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .flights-table thead th {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            font-weight: 600;
+            padding: 14px 24px;
+            text-align: left;
+            background: rgba(0,0,0,0.15);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .flights-table tbody td {
+            padding: 14px 24px;
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(99, 130, 200, 0.06);
+            transition: background 0.2s ease;
+        }
+
+        .flights-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .flights-table tbody tr:hover td {
+            background: rgba(59, 130, 246, 0.04);
+        }
+
+        .code-chip {
+            background: rgba(139, 92, 246, 0.12);
+            color: #a78bfa;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.82rem;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+        }
+
+        .flight-num {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .route {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+
+        .route-arrow {
+            color: var(--accent-cyan);
+            font-weight: 300;
+        }
+
+        .route-code {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.88rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+
+        .tag-business {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.08));
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+
+        .tag-turista {
+            background: rgba(100, 116, 139, 0.12);
+            color: #94a3b8;
+            border: 1px solid rgba(100, 116, 139, 0.2);
+        }
+
+        .price {
+            font-weight: 600;
+            color: var(--accent-emerald);
+        }
+
+        /* ── States ── */
+        .state-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+        }
+
+        .state-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.95); }
+        }
+
+        .state-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .state-msg {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .error-state .state-icon { animation: none; }
+        .error-state .state-title { color: var(--accent-rose); }
+
+        /* ── Loader dots ── */
+        .loader-dots {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+
+        .loader-dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            animation: dotBounce 1.4s ease-in-out infinite;
+        }
+
+        .loader-dots span:nth-child(2) { animation-delay: 0.16s; }
+        .loader-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+        @keyframes dotBounce {
+            0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 1.6rem; }
+            .stats-bar { grid-template-columns: repeat(2, 1fr); }
+            .filter-grid { grid-template-columns: 1fr; }
+            .card-top { flex-direction: column; gap: 12px; align-items: flex-start; }
+            .flights-table thead { display: none; }
+            .flights-table tbody td {
+                display: block;
+                padding: 8px 20px;
+                text-align: right;
+            }
+            .flights-table tbody td::before {
+                content: attr(data-label);
+                float: left;
+                font-weight: 600;
+                color: var(--text-muted);
+                font-size: 0.75rem;
+                text-transform: uppercase;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Hero -->
+        <div class="hero">
+            <div class="hero-logo">
+                <div class="icon">✈</div>
+            </div>
+            <h1>AirTortilla</h1>
+            <p>Panel de gestión de vuelos y reservas — datos en tiempo real desde CSV</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-card">
+                <div class="stat-value" id="statPasajeros">—</div>
+                <div class="stat-label">Pasajeros</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statVuelos">—</div>
+                <div class="stat-label">Vuelos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">—</div>
+                <div class="stat-label">Total Facturado</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statClases">—</div>
+                <div class="stat-label">Clases</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-panel">
+            <div class="filter-title">Filtros de búsqueda</div>
+            <div class="filter-grid">
+                <div class="filter-group">
+                    <label for="filterPasajero">Pasajero</label>
+                    <input type="text" id="filterPasajero" placeholder="Nombre del pasajero...">
+                </div>
+                <div class="filter-group">
+                    <label for="filterOrigen">Origen</label>
+                    <select id="filterOrigen">
+                        <option value="">Todos los orígenes</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filterDestino">Destino</label>
+                    <select id="filterDestino">
+                        <option value="">Todos los destinos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filterClase">Clase</label>
+                    <select id="filterClase">
+                        <option value="">Todas las clases</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary" id="btnFiltrar" onclick="aplicarFiltros()">Filtrar</button>
+                    <button class="btn btn-ghost" id="btnLimpiar" onclick="limpiarFiltros()">Limpiar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cards -->
+        <div id="listado">
+            <div class="state-container">
+                <div class="loader-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="state-title">Cargando datos</div>
+                <div class="state-msg">Leyendo archivo de vuelos…</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const avatarColors = ['avatar-blue', 'avatar-violet', 'avatar-cyan', 'avatar-emerald', 'avatar-amber', 'avatar-rose'];
+
+        function getInitials(name) {
+            return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+        }
+
+        function getAvatarColor(name) {
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            return avatarColors[Math.abs(hash) % avatarColors.length];
+        }
+
+        // Populate filter dropdowns from raw data
+        async function cargarOpciones() {
+            try {
+                const res = await fetch('/api/vuelos/todos');
+                if (!res.ok) return;
+                const vuelos = await res.json();
+
+                const origenes = [...new Set(vuelos.map(v => v.origen))].sort();
+                const destinos = [...new Set(vuelos.map(v => v.destino))].sort();
+                const clases = [...new Set(vuelos.map(v => v.clase))].sort();
+
+                const selOrigen = document.getElementById('filterOrigen');
+                origenes.forEach(o => {
+                    const opt = document.createElement('option');
+                    opt.value = o; opt.textContent = o;
+                    selOrigen.appendChild(opt);
+                });
+
+                const selDestino = document.getElementById('filterDestino');
+                destinos.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d; opt.textContent = d;
+                    selDestino.appendChild(opt);
+                });
+
+                const selClase = document.getElementById('filterClase');
+                clases.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c; opt.textContent = c;
+                    selClase.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Error cargando opciones de filtro:', e);
+            }
+        }
+
+        async function cargarDatos(params = {}) {
+            const contenedor = document.getElementById('listado');
+            contenedor.innerHTML = `
+                <div class="state-container">
+                    <div class="loader-dots"><span></span><span></span><span></span></div>
+                    <div class="state-title">Cargando datos</div>
+                    <div class="state-msg">Leyendo archivo de vuelos…</div>
+                </div>`;
+
+            try {
+                const query = new URLSearchParams();
+                if (params.pasajero) query.set('pasajero', params.pasajero);
+                if (params.origen) query.set('origen', params.origen);
+                if (params.destino) query.set('destino', params.destino);
+                if (params.clase) query.set('clase', params.clase);
+
+                const url = '/api/vuelos/pasajeros' + (query.toString() ? '?' + query.toString() : '');
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
+
+                const pasajeros = await res.json();
+
+                // Update stats
+                const totalVuelos = pasajeros.reduce((sum, p) => sum + p.totalVuelos, 0);
+                const totalGastado = pasajeros.reduce((sum, p) => sum + p.totalGastado, 0);
+                const clasesSet = new Set();
+                pasajeros.forEach(p => p.vuelos.forEach(v => clasesSet.add(v.clase)));
+
+                document.getElementById('statPasajeros').textContent = pasajeros.length;
+                document.getElementById('statVuelos').textContent = totalVuelos;
+                document.getElementById('statTotal').textContent = totalGastado.toFixed(2) + ' €';
+                document.getElementById('statClases').textContent = clasesSet.size;
+
+                if (pasajeros.length === 0) {
+                    contenedor.innerHTML = `
+                        <div class="state-container">
+                            <div class="state-icon">🔍</div>
+                            <div class="state-title">Sin resultados</div>
+                            <div class="state-msg">No se encontraron reservas con los filtros aplicados.</div>
+                        </div>`;
+                    return;
+                }
+
+                contenedor.innerHTML = '';
+                contenedor.className = 'cards-container';
+
+                pasajeros.forEach((p, idx) => {
+                    const card = document.createElement('div');
+                    card.className = 'passenger-card';
+                    card.style.animationDelay = `${idx * 0.08}s`;
+
+                    const rows = p.vuelos.map(v => {
+                        const parts = v.ruta.split(' ➔ ');
+                        const origen = parts[0] || '';
+                        const destino = parts[1] || '';
+                        return `
+                            <tr>
+                                <td data-label="Reserva"><span class="code-chip">${v.codigoReserva}</span></td>
+                                <td data-label="Vuelo"><span class="flight-num">${v.numeroVuelo}</span></td>
+                                <td data-label="Ruta">
+                                    <div class="route">
+                                        <span class="route-code">${origen}</span>
+                                        <span class="route-arrow">→</span>
+                                        <span class="route-code">${destino}</span>
+                                    </div>
+                                </td>
+                                <td data-label="Cabina">
+                                    <span class="tag ${v.clase === 'Business' ? 'tag-business' : 'tag-turista'}">${v.clase}</span>
+                                </td>
+                                <td data-label="Precio"><span class="price">${v.precio.toFixed(2)} €</span></td>
+                            </tr>`;
+                    }).join('');
+
+                    card.innerHTML = `
+                        <div class="card-top">
+                            <div class="card-top-left">
+                                <div class="avatar ${getAvatarColor(p.pasajero)}">${getInitials(p.pasajero)}</div>
+                                <div class="passenger-info">
+                                    <h3>${p.pasajero}</h3>
+                                    <div class="passenger-meta">${p.totalVuelos} vuelo${p.totalVuelos > 1 ? 's' : ''} registrado${p.totalVuelos > 1 ? 's' : ''}</div>
+                                </div>
+                            </div>
+                            <div class="total-badge">${p.totalGastado.toFixed(2)} €</div>
+                        </div>
+                        <table class="flights-table">
+                            <thead>
+                                <tr>
+                                    <th>Reserva</th>
+                                    <th>Vuelo</th>
+                                    <th>Ruta</th>
+                                    <th>Cabina</th>
+                                    <th>Precio</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>`;
+
+                    contenedor.appendChild(card);
+                });
+
+            } catch (err) {
+                contenedor.innerHTML = `
+                    <div class="state-container error-state">
+                        <div class="state-icon">⚠</div>
+                        <div class="state-title">Error al cargar datos</div>
+                        <div class="state-msg">${err.message}</div>
+                    </div>`;
+            }
+        }
+
+        function aplicarFiltros() {
+            const pasajero = document.getElementById('filterPasajero').value.trim();
+            const origen = document.getElementById('filterOrigen').value;
+            const destino = document.getElementById('filterDestino').value;
+            const clase = document.getElementById('filterClase').value;
+            cargarDatos({ pasajero, origen, destino, clase });
+        }
+
+        function limpiarFiltros() {
+            document.getElementById('filterPasajero').value = '';
+            document.getElementById('filterOrigen').value = '';
+            document.getElementById('filterDestino').value = '';
+            document.getElementById('filterClase').value = '';
+            cargarDatos();
+        }
+
+        // Trigger filter on Enter key in text input
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('filterPasajero').addEventListener('keydown', e => {
+                if (e.key === 'Enter') aplicarFiltros();
+            });
+        });
+
+        // Initial load
+        cargarOpciones();
+        cargarDatos();
+    </script>
+</body>
+</html>
