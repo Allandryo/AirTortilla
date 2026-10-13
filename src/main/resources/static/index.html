@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirTortilla - Gestión y Distribución de Reservas por País de Destino</title>
+    <meta name="description" content="Sistema de gestión, filtrado y división de reservas por país de destino y fecha en formato AirTortilla_XX_YYYY_MM_DD con consultas en modalidad total y línea a línea.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">AirTortilla</h1>
+                    <p class="brand-subtitle">Gestión y Distribución de Reservas • Filtro por País de Destino</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="system-status-badge">
+                    <span class="status-dot"></span>
+                    <span>Backend Spring Boot 3 & OpenCSV 5.9</span>
+                </div>
+                <button id="btn-generar-archivos" class="btn btn-primary" title="Generar ficheros AirTortilla_XX_YYYY_MM_DD">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/>
+                        <line x1="9" y1="15" x2="15" y2="15"/>
+                    </svg>
+                    Dividir y Generar Archivos
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI Metrics Grid -->
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">Reservas Cargadas</span>
+                    <span class="metric-icon">📋</span>
+                </div>
+                <div class="metric-value" id="kpi-total-reservas">0</div>
+                <div class="metric-footer">Registros activos en memoria</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-label">Países de Destino</span>
+                    <span class="metric-icon">🌍</span>
+                </div>
+                <div class="metric-value" id="kpi-total-paises">0</div>
+                <div class="metric-footer">Códigos ISO de destino únicos</div>
+            </div>
+
+            <div class="metric-card highlight-metric">
+                <div class="metric-header">
+                    <span class="metric-label">Casos Coincidentes</span>
+                    <span class="metric-icon">👥</span>
+                </div>
+                <div class="metric-value" id="kpi-total-coincidencias">0</div>
+                <div class="metric-footer" id="kpi-coincidencias-desc">Identificados con Localizador inequívoco</div>
+            </div>
+
+            <div class="metric-card success-metric">
+                <div class="metric-header">
+                    <span class="metric-label">Archivos Generados</span>
+                    <span class="metric-icon">📂</span>
+                </div>
+                <div class="metric-value" id="kpi-total-archivos">0</div>
+                <div class="metric-footer">Formato: AirTortilla_XX_YYYY_MM_DD</div>
+            </div>
+        </section>
+
+        <!-- Notification Banner / Collision Alert -->
+        <section id="alert-coincidencias" class="alert-box" style="display: none;">
+            <div class="alert-icon">⚠️</div>
+            <div class="alert-content">
+                <strong>Casos de Pasajeros Coincidentes Detectados (Mismo Nombre, Origen y Destino):</strong>
+                <p id="alert-coincidencias-texto">Se garantiza un identificador y localizador inequívoco para cada reserva desambiguando los pasajeros coincidentes.</p>
+            </div>
+            <button class="btn btn-sm btn-ghost" id="btn-ver-coincidencias">Ver Detalles</button>
+        </section>
+
+        <!-- File Upload Card -->
+        <section class="upload-section">
+            <div class="upload-dropzone" id="dropzone">
+                <input type="file" id="input-archivo-csv" accept=".csv,text/csv" class="file-input-hidden">
+                <div class="upload-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <div class="upload-text">
+                    <span class="upload-prompt">Arrastra o haz clic para subir un nuevo archivo <strong>.CSV</strong> de reservas</span>
+                    <span class="upload-subtext">Formato esperado: <code>id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento</code></span>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-file">Seleccionar Archivo</button>
+            </div>
+        </section>
+
+        <!-- Main Navigation Tabs -->
+        <nav class="nav-tabs" role="tablist">
+            <button class="tab-btn active" data-tab="tab-archivos" role="tab" id="tab-btn-archivos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Ficheros Generados por Destino (<span id="badge-contador-archivos">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="tab-reservas" role="tab" id="tab-btn-reservas">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Listado General de Reservas (<span id="badge-contador-reservas">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="tab-coincidencias" role="tab" id="tab-btn-coincidencias">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Desambiguación de Pasajeros (<span id="badge-contador-coincidencias">0</span>)
+            </button>
+        </nav>
+
+        <!-- Tab 1: Ficheros Generados -->
+        <main class="tab-content active" id="tab-archivos">
+            <div class="section-toolbar">
+                <div class="toolbar-search">
+                    <input type="text" id="filtro-archivos" placeholder="Filtrar ficheros por país (ej. IT, FR, DE) o fecha..." class="input-search">
+                </div>
+                <div class="toolbar-stats">
+                    <span id="label-archivos-count">Cargando ficheros...</span>
+                </div>
+            </div>
+
+            <div class="files-grid" id="grid-archivos">
+                <!-- Tarjetas de ficheros inyectadas por JS -->
+            </div>
+
+            <div class="empty-state" id="empty-archivos" style="display: none;">
+                <div class="empty-icon">🗂️</div>
+                <h3>No hay archivos generados aún</h3>
+                <p>Haz clic en "Dividir y Generar Archivos" para procesar las reservas por país de destino.</p>
+                <button class="btn btn-primary" onclick="document.getElementById('btn-generar-archivos').click()">Generar Ahora</button>
+            </div>
+        </main>
+
+        <!-- Tab 2: Listado General de Reservas -->
+        <section class="tab-content" id="tab-reservas">
+            <div class="section-toolbar">
+                <div class="toolbar-search">
+                    <input type="text" id="filtro-reservas" placeholder="Buscar por pasajero, origen, destino, localizador..." class="input-search">
+                </div>
+                <div class="toolbar-actions">
+                    <select id="select-filtro-pais" class="select-input">
+                        <option value="">Todos los países de destino</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table" id="tabla-reservas">
+                    <thead>
+                        <tr>
+                            <th>ID Inequívoco</th>
+                            <th>Pasajero</th>
+                            <th>Origen</th>
+                            <th>Destino</th>
+                            <th>País Destino (ISO)</th>
+                            <th>Fecha Reserva</th>
+                            <th>Localizador</th>
+                            <th>Asiento</th>
+                            <th>Estado Coincidencia</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-reservas">
+                        <!-- Filas de reservas inyectadas dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Tab 3: Desambiguación de Pasajeros Coincidentes -->
+        <section class="tab-content" id="tab-coincidencias">
+            <div class="coincidencias-intro">
+                <h3>Verificación de Identificación Inequívoca y Localizadores</h3>
+                <p>Cumplimiento del requisito de desambiguación: Cuando 2 o más pasajeros coinciden en Nombre, Origen y Destino, el sistema garantiza un identificador inequívoco y un localizador diferenciado para cada billete.</p>
+            </div>
+            <div class="coincidencias-list" id="lista-coincidencias">
+                <!-- Tarjetas de colisión inyectadas dinámicamente -->
+            </div>
+        </section>
+
+        <!-- Modal: MODALIDAD TOTAL -->
+        <div class="modal-overlay" id="modal-total" style="display: none;">
+            <div class="modal-container modal-xl">
+                <header class="modal-header">
+                    <div>
+                        <div class="modal-badge">Modalidad de Consulta: Total</div>
+                        <h2 class="modal-title" id="modal-total-titulo">AirTortilla_XX_YYYY_MM_DD.csv</h2>
+                    </div>
+                    <button class="modal-close-btn" id="btn-cerrar-modal-total">&times;</button>
+                </header>
+
+                <div class="modal-body">
+                    <div class="modal-file-metadata" id="modal-total-metadatos">
+                        <!-- Metadatos del fichero -->
+                    </div>
+
+                    <div class="view-mode-toggle">
+                        <button class="toggle-btn active" id="btn-toggle-tabla">Vista Estructurada (Tabla)</button>
+                        <button class="toggle-btn" id="btn-toggle-raw">Vista CSV en Bruto (Raw)</button>
+                    </div>
+
+                    <!-- Vista Tabla Estructurada -->
+                    <div id="modal-total-tabla-wrapper" class="table-container max-h-modal">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>ID Inequívoco</th>
+                                    <th>Pasajero</th>
+                                    <th>Origen</th>
+                                    <th>Destino</th>
+                                    <th>País ISO</th>
+                                    <th>Fecha</th>
+                                    <th>Localizador</th>
+                                    <th>Asiento</th>
+                                    <th>Precio</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modal-total-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Vista CSV Raw -->
+                    <div id="modal-total-raw-wrapper" style="display: none;">
+                        <pre class="raw-code-block" id="modal-total-raw-code"></pre>
+                    </div>
+                </div>
+
+                <footer class="modal-footer">
+                    <button class="btn btn-secondary" id="btn-cerrar-modal-total-footer">Cerrar</button>
+                    <button class="btn btn-primary" id="btn-descargar-archivo-total">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Descargar Archivo CSV
+                    </button>
+                </footer>
+            </div>
+        </div>
+
+        <!-- Modal: MODALIDAD LÍNEA A LÍNEA -->
+        <div class="modal-overlay" id="modal-linea" style="display: none;">
+            <div class="modal-container modal-lg">
+                <header class="modal-header">
+                    <div>
+                        <div class="modal-badge badge-line-mode">Modalidad de Consulta: Línea a Línea</div>
+                        <h2 class="modal-title" id="modal-linea-titulo">Explorador Línea a Línea</h2>
+                    </div>
+                    <button class="modal-close-btn" id="btn-cerrar-modal-linea">&times;</button>
+                </header>
+
+                <div class="modal-body">
+                    <!-- Deck de Controles de Navegación Línea a Línea -->
+                    <div class="line-controls-deck">
+                        <div class="line-stepper-info">
+                            <span class="stepper-label">Posición del Cursor:</span>
+                            <span class="stepper-counter" id="line-counter-badge">Línea 1 de 1</span>
+                        </div>
+
+                        <div class="line-slider-container">
+                            <input type="range" id="line-range-slider" min="1" max="1" value="1" class="line-slider">
+                        </div>
+
+                        <div class="stepper-button-group">
+                            <button id="btn-line-first" class="btn btn-sm btn-secondary" title="Primera línea">⏮️ Inicio</button>
+                            <button id="btn-line-prev" class="btn btn-sm btn-primary" title="Línea anterior">◀ Anterior</button>
+                            <button id="btn-line-autoplay" class="btn btn-sm btn-accent" title="Reproducción automática">▶ Auto-Play</button>
+                            <button id="btn-line-next" class="btn btn-sm btn-primary" title="Línea siguiente">Siguiente ▶</button>
+                            <button id="btn-line-last" class="btn btn-sm btn-secondary" title="Última línea">Fin ⏭️</button>
+                        </div>
+                    </div>
+
+                    <!-- Ficha Detallada de la Reserva de la Línea Actual -->
+                    <div class="reservation-card-deck" id="line-card-details">
+                        <div class="card-deck-header">
+                            <div class="pax-name-group">
+                                <span class="pax-avatar">✈️</span>
+                                <div>
+                                    <h3 class="pax-name" id="card-pax-name">-</h3>
+                                    <span class="pax-flight" id="card-flight-route">-</span>
+                                </div>
+                            </div>
+                            <div class="badge-locator-group">
+                                <span class="badge-key">Localizador:</span>
+                                <span class="badge-locator" id="card-pax-locator">-</span>
+                            </div>
+                        </div>
+
+                        <div class="card-deck-grid">
+                            <div class="field-box">
+                                <span class="field-title">ID Inequívoco</span>
+                                <span class="field-content font-mono" id="card-pax-id">-</span>
+                            </div>
+                            <div class="field-box">
+                                <span class="field-title">País de Destino (ISO)</span>
+                                <span class="field-content" id="card-pax-iso">-</span>
+                            </div>
+                            <div class="field-box">
+                                <span class="field-title">Fecha de Realización</span>
+                                <span class="field-content" id="card-pax-date">-</span>
+                            </div>
+                            <div class="field-box">
+                                <span class="field-title">Asiento / Tarifa</span>
+                                <span class="field-content" id="card-pax-seat">-</span>
+                            </div>
+                        </div>
+
+                        <div class="collision-deck-alert" id="card-collision-alert" style="display: none;">
+                            <span class="alert-icon">⚠️</span>
+                            <div>
+                                <strong>Pasajero Coincidente Detectado:</strong>
+                                <span id="card-collision-text">Comparte nombre, origen y destino con otras reservas. Su localizador inequívoco garantiza la correcta identificación.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visualización del Texto en Bruto de la Línea CSV -->
+                    <div class="raw-line-preview-container">
+                        <div class="raw-preview-header">
+                            <span>Texto de la Línea en el Fichero CSV (Formato Crudo):</span>
+                            <button class="btn btn-xs btn-ghost" id="btn-copiar-linea">Copiar Línea</button>
+                        </div>
+                        <pre class="raw-line-code" id="card-raw-line"></pre>
+                    </div>
+                </div>
+
+                <footer class="modal-footer">
+                    <button class="btn btn-secondary" id="btn-cerrar-modal-linea-footer">Cerrar Inspector</button>
+                    <button class="btn btn-primary" id="btn-cambiar-a-total">Cambiar a Modalidad Total</button>
+                </footer>
+            </div>
+        </div>
+
+        <!-- Toast Notifications Container -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
