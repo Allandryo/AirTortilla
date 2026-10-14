@@ -130,13 +130,21 @@ public class Reserva {
     }
 
     /**
-     * Clave compuesta de coincidencia: Nombre del Pasajero + Origen + Destino
+     * Delimitador utilizado para construir la clave de agrupamiento por colisión.
+     */
+    public static final String SEPARADOR_COINCIDENCIA = "||";
+
+    /**
+     * Genera una clave compuesta inequívoca para agrupar reservas:
+     * Nombre del Pasajero + Origen + Destino (normalizados en minúsculas y sin espacios residuales).
+     *
+     * @return Clave compuesta normalizada para detectar pasajeros coincidentes.
      */
     public String getClaveCoincidencia() {
         String n = nombrePasajero != null ? nombrePasajero.trim().toLowerCase() : "";
         String o = origen != null ? origen.trim().toLowerCase() : "";
         String d = destino != null ? destino.trim().toLowerCase() : "";
-        return n + "||" + o + "||" + d;
+        return n + SEPARADOR_COINCIDENCIA + o + SEPARADOR_COINCIDENCIA + d;
     }
 
     @Override

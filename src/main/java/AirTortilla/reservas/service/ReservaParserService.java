@@ -28,6 +28,10 @@ public class ReservaParserService {
 
     private static final Logger log = LoggerFactory.getLogger(ReservaParserService.class);
 
+    public static final String PAIS_DESCONOCIDO = "XX";
+    private static final String PREFIJO_ID_RESERVA = "RES-";
+    private static final String PREFIJO_LOCALIZADOR = "AT-";
+
     /**
      * Parsea un flujo CSV a una lista de objetos Reserva usando OpenCSV (CsvToBean).
      */
@@ -73,110 +77,148 @@ public class ReservaParserService {
     }
 
     /**
-     * Garantiza que cada reserva posea:
-     * 1) Identificador único e inequívoco (si viniera vacío).
-     * 2) Localizador único y persistente, especialmente crucial cuando 2 o más pasajeros
-     *    coinciden en Nombre, Origen y Destino.
-     * 3) Código ISO de país en mayúsculas y normalizado.
+     * Garantiza que cada reserva cumpla con las reglas de negocio de la aerolínea:
+     * 1) Código ISO de país en mayúsculas y normalizado (por defecto 'XX' si viniera nulo).
+     * 2) Identificador único e inequívoco (autogenerado si viniera vacío o duplicado).
+     * 3) Localizador único y persistente, desambiguando especialmente cuando 2 o más
+     *    pasajeros coinciden en Nombre, Origen y Destino.
+     *
+     * @param reservas Lista de reservas leídas desde el CSV.
      */
     public void normalizarYAsegurarIdentificadores(List<Reserva> reservas) {
         if (reservas == null || reservas.isEmpty()) {
             return;
         }
 
-        // Mapa para verificar unicidad de ID y Localizador
         Set<String> idsExistentes = new HashSet<>();
         Set<String> localizadoresExistentes = new HashSet<>();
 
-        // Detectar colisiones de (Nombre + Origen + Destino)
-        Map<String, List<Reserva>> agrupacionCoincidentes = new HashMap<>();
-
+        // Paso 1: Normalizar campos y asegurar ID inequívoco para cada fila
         for (int i = 0; i < reservas.size(); i++) {
-            Reserva r = reservas.get(i);
-
-            // Validar campos esenciales
-            if (r.getCodigoPaisDestino() != null) {
-                r.setCodigoPaisDestino(r.getCodigoPaisDestino().trim().toUpperCase());
-            } else {
-                // Por defecto o derivado de destino si faltase
-                r.setCodigoPaisDestino("XX");
-            }
-
-            if (r.getFechaReserva() == null) {
-                r.setFechaReserva(LocalDate.now());
-            }
-
-            // Asegurar ID inequívoco
-            if (r.getId() == null || r.getId().trim().isEmpty() || idsExistentes.contains(r.getId())) {
-                String nuevoId = "RES-" + r.getCodigoPaisDestino() + "-" + String.format("%04d", (i + 1)) + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-                r.setId(nuevoId);
-            }
-            idsExistentes.add(r.getId());
-
-            agrupacionCoincidentes
-                    .computeIfAbsent(r.getClaveCoincidencia(), k -> new ArrayList<>())
-                    .add(r);
+            normalizarCamposYAsegurarId(reservas.get(i), i + 1, idsExistentes);
         }
 
-        // Asignar o asegurar localizadores inequívocos, especialmente en grupos coincidentes
+        // Paso 2: Agrupar por coincidencia (Nombre + Origen + Destino)
+        Map<String, List<Reserva>> agrupacionCoincidentes = agruparPorCoincidencia(reservas);
+
+        // Paso 3: Asignar o asegurar localizadores únicos y desambiguados por grupo
+        resolverLocalizadores(agrupacionCoincidentes, localizadoresExistentes);
+    }
+
+    /**
+     * Normaliza los atributos indispensables de una reserva (país, fecha) y garantiza
+     * la asignación de un identificador único en caso de ausencia o duplicidad.
+     */
+    private void normalizarCamposYAsegurarId(Reserva r, int posicionFila, Set<String> idsExistentes) {
+        String pais = r.getCodigoPaisDestino();
+        r.setCodigoPaisDestino((pais != null && !pais.isBlank()) ? pais.trim().toUpperCase() : PAIS_DESCONOCIDO);
+
+        if (r.getFechaReserva() == null) {
+            r.setFechaReserva(LocalDate.now());
+        }
+
+        if (r.getId() == null || r.getId().isBlank() || idsExistentes.contains(r.getId())) {
+            String sufijo = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+            r.setId(String.format("%s%s-%04d-%s", PREFIJO_ID_RESERVA, r.getCodigoPaisDestino(), posicionFila, sufijo));
+        }
+        idsExistentes.add(r.getId());
+    }
+
+    /**
+     * Agrupa la colección de reservas en base a la clave compuesta de coincidencia:
+     * Nombre Pasajero + Origen + Destino.
+     */
+    private Map<String, List<Reserva>> agruparPorCoincidencia(List<Reserva> reservas) {
+        Map<String, List<Reserva>> agrupacion = new LinkedHashMap<>();
+        for (Reserva r : reservas) {
+            agrupacion.computeIfAbsent(r.getClaveCoincidencia(), k -> new ArrayList<>()).add(r);
+        }
+        return agrupacion;
+    }
+
+    /**
+     * Recorre cada grupo y asegura que todos los billetes tengan localizador único.
+     * En caso de grupos coincidentes (>1 pasajero), genera identificadores inequívocos persistentes.
+     */
+    private void resolverLocalizadores(Map<String, List<Reserva>> agrupacionCoincidentes,
+                                       Set<String> localizadoresExistentes) {
         for (Map.Entry<String, List<Reserva>> entry : agrupacionCoincidentes.entrySet()) {
             List<Reserva> grupo = entry.getValue();
             boolean esGrupoCoincidente = grupo.size() > 1;
 
             for (int subIdx = 0; subIdx < grupo.size(); subIdx++) {
                 Reserva r = grupo.get(subIdx);
-                // Si el localizador viene nulo, vacío, o colisiona con otro existente en el conjunto
-                if (r.getLocalizador() == null || r.getLocalizador().trim().isEmpty()
-                        || localizadoresExistentes.contains(r.getLocalizador())) {
-                    String nuevoLocalizador = generarLocalizadorUnico(r, subIdx + 1, esGrupoCoincidente);
-                    while (localizadoresExistentes.contains(nuevoLocalizador)) {
-                        nuevoLocalizador = generarLocalizadorUnico(r, subIdx + (int)(Math.random() * 1000) + 1, esGrupoCoincidente);
-                    }
-                    r.setLocalizador(nuevoLocalizador);
-                }
-                localizadoresExistentes.add(r.getLocalizador());
+                asignarLocalizadorValido(r, subIdx + 1, esGrupoCoincidente, localizadoresExistentes);
             }
         }
     }
 
-    private String generarLocalizadorUnico(Reserva r, int indice, boolean esCoincidente) {
-        String prefijo = "AT-" + (r.getCodigoPaisDestino() != null ? r.getCodigoPaisDestino() : "XX");
-        String letra = String.valueOf((char) ('A' + (indice % 26)));
-        String sufijo = esCoincidente ? "-C" + indice : "-" + UUID.randomUUID().toString().substring(0, 3).toUpperCase();
-        return prefijo + sufijo + letra;
+    /**
+     * Valida y asigna un localizador no repetido a la reserva.
+     */
+    private void asignarLocalizadorValido(Reserva r, int indiceGrupo, boolean esGrupoCoincidente,
+                                          Set<String> localizadoresExistentes) {
+        String loc = r.getLocalizador();
+        if (loc == null || loc.isBlank() || localizadoresExistentes.contains(loc)) {
+            String nuevoLoc = generarLocalizadorUnico(r, indiceGrupo, esGrupoCoincidente);
+            int intentos = 1;
+            while (localizadoresExistentes.contains(nuevoLoc)) {
+                nuevoLoc = generarLocalizadorUnico(r, indiceGrupo + intentos * 100, esGrupoCoincidente);
+                intentos++;
+            }
+            r.setLocalizador(nuevoLoc);
+        }
+        localizadoresExistentes.add(r.getLocalizador());
     }
 
     /**
-     * Extrae los grupos de reservas que coinciden en Nombre, Origen y Destino.
+     * Genera un localizador legible con formato:
+     * AT-[PAIS]-C[INDICE][LETRA] para colisiones, o AT-[PAIS]-[HASH][LETRA] para regulares.
+     */
+    private String generarLocalizadorUnico(Reserva r, int indice, boolean esCoincidente) {
+        String codigoPais = r.getCodigoPaisDestino() != null ? r.getCodigoPaisDestino() : PAIS_DESCONOCIDO;
+        char letraSecuencial = (char) ('A' + (indice % 26));
+        String sufijo = esCoincidente
+                ? "-C" + indice
+                : "-" + UUID.randomUUID().toString().substring(0, 3).toUpperCase();
+
+        return PREFIJO_LOCALIZADOR + codigoPais + sufijo + letraSecuencial;
+    }
+
+    /**
+     * Extrae y analiza los grupos de reservas que coinciden en Nombre, Origen y Destino.
+     * Retorna únicamente los grupos con 2 o más pasajeros coincidentes, ordenados de forma descendente.
+     *
+     * @param reservas Lista de reservas a analizar.
+     * @return Lista de grupos de coincidencia encontrados.
      */
     public List<GrupoCoincidenciaDto> analizarCoincidencias(List<Reserva> reservas) {
         if (reservas == null || reservas.isEmpty()) {
             return Collections.emptyList();
         }
 
-        Map<String, List<Reserva>> agrupados = reservas.stream()
-                .collect(Collectors.groupingBy(Reserva::getClaveCoincidencia, LinkedHashMap::new, Collectors.toList()));
-
+        // Reutiliza la misma lógica de agrupación por clave compuesta
+        Map<String, List<Reserva>> agrupados = agruparPorCoincidencia(reservas);
         List<GrupoCoincidenciaDto> coincidencias = new ArrayList<>();
 
         for (Map.Entry<String, List<Reserva>> entry : agrupados.entrySet()) {
-            List<Reserva> lista = entry.getValue();
-            if (lista.size() > 1) { // 2 o más pasajeros coincidentes
-                Reserva muestra = lista.getFirst();
+            List<Reserva> grupo = entry.getValue();
+            if (grupo.size() > 1) { // 2 o más pasajeros coincidentes
+                Reserva muestra = grupo.getFirst();
                 coincidencias.add(new GrupoCoincidenciaDto(
                         entry.getKey(),
                         muestra.getNombrePasajero(),
                         muestra.getOrigen(),
                         muestra.getDestino(),
                         muestra.getCodigoPaisDestino(),
-                        lista.size(),
-                        lista
+                        grupo.size(),
+                        grupo
                 ));
             }
         }
 
-        // Ordenar con el grupo de más coincidentes primero
-        coincidencias.sort((a, b) -> Integer.compare(b.getTotalCoincidentes(), a.getTotalCoincidentes()));
+        // Ordenar con el grupo de más coincidentes primero de forma declarativa
+        coincidencias.sort(Comparator.comparingInt(GrupoCoincidenciaDto::getTotalCoincidentes).reversed());
         return coincidencias;
     }
 }

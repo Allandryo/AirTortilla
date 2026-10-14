@@ -25,23 +25,22 @@ public class ReservaManagerService {
 
     private final ReservaParserService parserService;
     private final ReservaExportService exportService;
-    private final ReservaFileService fileService;
 
     // Reservas cargadas actualmente en memoria
     private final List<Reserva> reservasActivas = Collections.synchronizedList(new ArrayList<>());
 
-    public ReservaManagerService(ReservaParserService parserService,
-                                 ReservaExportService exportService,
-                                 ReservaFileService fileService) {
+    public ReservaManagerService(ReservaParserService parserService, ReservaExportService exportService) {
         this.parserService = parserService;
         this.exportService = exportService;
-        this.fileService = fileService;
     }
 
     /**
      * Carga reservas desde un archivo CSV subido por el usuario a través de la interfaz web.
      * Formato esperado de cabecera:
      * id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+     *
+     * @param file Archivo subido vía multipart/form-data.
+     * @return Copia defensiva de la lista de reservas cargadas.
      */
     public List<Reserva> cargarDesdeArchivoSubido(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -49,12 +48,9 @@ public class ReservaManagerService {
         }
         try (InputStream is = file.getInputStream()) {
             List<Reserva> reservas = parserService.parsearCsv(is);
-            synchronized (reservasActivas) {
-                reservasActivas.clear();
-                reservasActivas.addAll(reservas);
-            }
+            actualizarReservasEnMemoria(reservas);
             log.info("Cargadas {} reservas desde archivo subido '{}'", reservas.size(), file.getOriginalFilename());
-            return new ArrayList<>(reservasActivas);
+            return getReservasActivas();
         } catch (Exception e) {
             log.error("Error al procesar archivo subido", e);
             throw new RuntimeException("Error al procesar el archivo CSV subido: " + e.getMessage(), e);
@@ -62,19 +58,31 @@ public class ReservaManagerService {
     }
 
     /**
+     * Reemplaza de forma atómica y segura para hilos las reservas activas en memoria.
+     */
+    private void actualizarReservasEnMemoria(List<Reserva> nuevasReservas) {
+        synchronized (reservasActivas) {
+            reservasActivas.clear();
+            reservasActivas.addAll(nuevasReservas);
+        }
+    }
+
+    /**
      * Genera los archivos divididos por país de destino a partir de las reservas activas.
+     *
+     * @return Lista de metadatos de los archivos generados.
      */
     public List<ArchivoReservaInfo> generarArchivosPorDestino() {
-        List<Reserva> copia;
-        synchronized (reservasActivas) {
-            copia = new ArrayList<>(reservasActivas);
-        }
+        List<Reserva> copia = getReservasActivas();
         if (copia.isEmpty()) {
             throw new IllegalStateException("No hay reservas activas para generar archivos. Suba un CSV primero.");
         }
         return exportService.exportarArchivosPorDestinoYFecha(copia);
     }
 
+    /**
+     * Retorna una copia defensiva de las reservas activas en memoria para evitar mutaciones externas concurrentes.
+     */
     public List<Reserva> getReservasActivas() {
         synchronized (reservasActivas) {
             return new ArrayList<>(reservasActivas);
@@ -83,9 +91,5 @@ public class ReservaManagerService {
 
     public List<GrupoCoincidenciaDto> obtenerCoincidenciasActivas() {
         return parserService.analizarCoincidencias(getReservasActivas());
-    }
-
-    public ReservaFileService getFileService() {
-        return fileService;
     }
 }

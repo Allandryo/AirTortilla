@@ -17,6 +17,20 @@ public class LineaReservaDto {
     public LineaReservaDto() {
     }
 
+    public LineaReservaDto(String nombreArchivo, int numeroLinea, int totalLineas, String lineaRaw,
+                           Reserva reserva, boolean tieneAnterior, boolean tieneSiguiente,
+                           boolean esCoincidente, int totalCoincidentes) {
+        this.nombreArchivo = nombreArchivo;
+        this.numeroLinea = numeroLinea;
+        this.totalLineas = totalLineas;
+        this.lineaRaw = lineaRaw;
+        this.reserva = reserva;
+        this.tieneAnterior = tieneAnterior;
+        this.tieneSiguiente = tieneSiguiente;
+        this.esCoincidente = esCoincidente;
+        this.totalCoincidentes = totalCoincidentes;
+    }
+
     public String getNombreArchivo() {
         return nombreArchivo;
     }

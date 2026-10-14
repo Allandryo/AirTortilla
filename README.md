@@ -34,11 +34,10 @@ id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,
 
 - **Un único archivo por país**: Todas las reservas con el mismo código ISO de país de destino se agrupan en un único fichero, **sin importar la ciudad concreta de destino ni la fecha individual del vuelo**.
   - _Ejemplo_: Si hay un vuelo a Berlín (`destino=Berlin, pais_destino=DE`) y otro a Múnich (`destino=Munich, pais_destino=DE`), **ambos se incluyen en el mismo archivo de Alemania**.
-- **Nomenclatura exigida**:
-  $$\text{AirTortilla\_XX\_YYYY\_MM\_DD.csv}$$
   - `XX`: Código ISO de 2 letras en mayúsculas del país de destino.
   - `YYYY_MM_DD`: Fecha de generación del fichero.
   - _Ejemplos_: `AirTortilla_DE_2026_10_13.csv`, `AirTortilla_FR_2026_10_13.csv`, `AirTortilla_IT_2026_10_13.csv`.
+
 - **Ubicación**: Los ficheros se generan en la carpeta `archivos_generados/`.
 
 ### 3. Identificación Inequívoca y Desambiguación de Pasajeros

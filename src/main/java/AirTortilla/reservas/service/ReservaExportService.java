@@ -39,7 +39,29 @@ import java.util.stream.Collectors;
 public class ReservaExportService {
 
     private static final Logger log = LoggerFactory.getLogger(ReservaExportService.class);
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy_MM_dd");
+
+    public static final String PREFIJO_ARCHIVO = "AirTortilla_";
+    public static final String EXTENSION_CSV = ".csv";
+    public static final String PATRON_FECHA_ARCHIVO = "yyyy_MM_dd";
+    public static final String PATRON_FECHA_RESERVA = "yyyy-MM-dd";
+
+    /**
+     * Columnas estandarizadas del fichero CSV de reservas.
+     */
+    public static final String[] CABECERA_CSV = {
+            "id",
+            "nombre_pasajero",
+            "origen",
+            "destino",
+            "pais_destino",
+            "fecha_reserva",
+            "localizador",
+            "precio",
+            "asiento"
+    };
+
+    private static final DateTimeFormatter FORMATTER_NOMBRE_ARCHIVO = DateTimeFormatter.ofPattern(PATRON_FECHA_ARCHIVO);
+    private static final DateTimeFormatter FORMATTER_FECHA_RESERVA = DateTimeFormatter.ofPattern(PATRON_FECHA_RESERVA);
 
     private final Path directorioSalida;
 
@@ -64,10 +86,16 @@ public class ReservaExportService {
     }
 
     /**
-     * Divide la lista de reservas SOLO por País de Destino (código ISO),
-     * generando un fichero por cada país respetando la convención:
+     * Divide la lista de reservas ÚNICAMENTE por País de Destino (código ISO de 2 letras),
+     * generando un fichero por cada país con la convención:
      * "AirTortilla_XX_YYYY_MM_DD.csv"
      * donde la fecha corresponde al momento de generación del fichero.
+     *
+     * Regla de negocio: Todas las reservas hacia el mismo país van juntas en el mismo archivo,
+     * sin importar la ciudad concreta ni la fecha individual del vuelo.
+     *
+     * @param reservas Colección de reservas a particionar y exportar.
+     * @return Lista de metadatos de los archivos CSV generados.
      */
     public List<ArchivoReservaInfo> exportarArchivosPorDestinoYFecha(List<Reserva> reservas) {
         crearDirectorioSiNoExiste();
@@ -75,52 +103,81 @@ public class ReservaExportService {
             return Collections.emptyList();
         }
 
-        // Fecha actual de generación para el nombre del fichero
         LocalDate fechaGeneracion = LocalDate.now();
-        String fechaStr = fechaGeneracion.format(DATE_FORMATTER);
+        String fechaStr = fechaGeneracion.format(FORMATTER_NOMBRE_ARCHIVO);
 
-        // Agrupar SOLO por código ISO del país de destino
-        Map<String, List<Reserva>> agrupacion = reservas.stream()
-                .collect(Collectors.groupingBy(r -> {
-                    String paisIso = (r.getCodigoPaisDestino() != null && !r.getCodigoPaisDestino().trim().isEmpty())
-                            ? r.getCodigoPaisDestino().trim().toUpperCase()
-                            : "XX";
-                    return paisIso;
-                }, LinkedHashMap::new, Collectors.toList()));
+        // Agrupación exclusiva por código ISO del país de destino
+        Map<String, List<Reserva>> reservasPorPais = agruparPorPaisDestino(reservas);
 
         List<ArchivoReservaInfo> archivosGenerados = new ArrayList<>();
+        for (Map.Entry<String, List<Reserva>> entry : reservasPorPais.entrySet()) {
+            String paisIso = entry.getKey();
+            List<Reserva> reservasPais = entry.getValue();
 
-        for (Map.Entry<String, List<Reserva>> entry : agrupacion.entrySet()) {
-            String paisIso = entry.getKey(); // ej: "FR"
-            List<Reserva> reservasGrupo = entry.getValue();
-
-            // Nombre de fichero: AirTortilla_XX_YYYY_MM_DD.csv (fecha = fecha de generación)
-            String nombreArchivo = "AirTortilla_" + paisIso + "_" + fechaStr + ".csv";
-
-            Path archivoPath = directorioSalida.resolve(nombreArchivo);
-            escribirArchivoCsv(archivoPath, reservasGrupo);
-
-            long tamanoBytes = 0;
-            try {
-                tamanoBytes = Files.size(archivoPath);
-            } catch (IOException ignored) {}
-
-            ArchivoReservaInfo info = new ArchivoReservaInfo(
-                    nombreArchivo,
-                    paisIso,
-                    fechaGeneracion,
-                    reservasGrupo.size(),
-                    tamanoBytes,
-                    LocalDateTime.now()
-            );
-
+            ArchivoReservaInfo info = exportarArchivoDePais(paisIso, reservasPais, fechaGeneracion, fechaStr);
             archivosGenerados.add(info);
-            log.info("Generado archivo {} con {} reservas", nombreArchivo, reservasGrupo.size());
         }
 
         return archivosGenerados;
     }
 
+    /**
+     * Genera y escribe el archivo CSV para un país concreto y devuelve sus metadatos.
+     */
+    private ArchivoReservaInfo exportarArchivoDePais(String paisIso, List<Reserva> reservasPais,
+                                                     LocalDate fechaGeneracion, String fechaStr) {
+        String nombreArchivo = construirNombreArchivo(paisIso, fechaStr);
+        Path archivoPath = directorioSalida.resolve(nombreArchivo);
+
+        escribirArchivoCsv(archivoPath, reservasPais);
+
+        long tamanoBytes = obtenerTamanoArchivo(archivoPath);
+        log.info("Generado archivo {} con {} reservas", nombreArchivo, reservasPais.size());
+
+        return new ArchivoReservaInfo(
+                nombreArchivo,
+                paisIso,
+                fechaGeneracion,
+                reservasPais.size(),
+                tamanoBytes,
+                LocalDateTime.now()
+        );
+    }
+
+    /**
+     * Agrupa las reservas por código ISO de país en mayúsculas (ej: 'ES', 'FR').
+     */
+    private Map<String, List<Reserva>> agruparPorPaisDestino(List<Reserva> reservas) {
+        return reservas.stream()
+                .collect(Collectors.groupingBy(this::obtenerCodigoPaisNormalizado, LinkedHashMap::new, Collectors.toList()));
+    }
+
+    private String obtenerCodigoPaisNormalizado(Reserva r) {
+        String pais = r.getCodigoPaisDestino();
+        return (pais != null && !pais.isBlank())
+                ? pais.trim().toUpperCase()
+                : ReservaParserService.PAIS_DESCONOCIDO;
+    }
+
+    /**
+     * Construye el nombre estandarizado del fichero CSV: AirTortilla_XX_YYYY_MM_DD.csv
+     */
+    public static String construirNombreArchivo(String paisIso, String fechaStr) {
+        return PREFIJO_ARCHIVO + paisIso + "_" + fechaStr + EXTENSION_CSV;
+    }
+
+    private long obtenerTamanoArchivo(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException e) {
+            log.warn("No se pudo obtener el tamaño de {}", path, e);
+            return 0;
+        }
+    }
+
+    /**
+     * Escribe las filas de reservas en disco con formato CSV estándar UTF-8.
+     */
     private void escribirArchivoCsv(Path archivoPath, List<Reserva> reservas) {
         try (CSVWriter writer = new CSVWriter(
                 new FileWriter(archivoPath.toFile(), StandardCharsets.UTF_8),
@@ -129,35 +186,12 @@ public class ReservaExportService {
                 CSVWriter.DEFAULT_ESCAPE_CHARACTER,
                 CSVWriter.DEFAULT_LINE_END)) {
 
-            // Cabecera estándar de exportación
-            String[] cabecera = {
-                    "id",
-                    "nombre_pasajero",
-                    "origen",
-                    "destino",
-                    "pais_destino",
-                    "fecha_reserva",
-                    "localizador",
-                    "precio",
-                    "asiento"
-            };
-            writer.writeNext(cabecera);
+            // 1. Escribir cabecera estándar
+            writer.writeNext(CABECERA_CSV);
 
-            DateTimeFormatter isoDate = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
+            // 2. Escribir cada una de las filas
             for (Reserva r : reservas) {
-                String[] fila = {
-                        r.getId() != null ? r.getId() : "",
-                        r.getNombrePasajero() != null ? r.getNombrePasajero() : "",
-                        r.getOrigen() != null ? r.getOrigen() : "",
-                        r.getDestino() != null ? r.getDestino() : "",
-                        r.getCodigoPaisDestino() != null ? r.getCodigoPaisDestino() : "",
-                        r.getFechaReserva() != null ? r.getFechaReserva().format(isoDate) : "",
-                        r.getLocalizador() != null ? r.getLocalizador() : "",
-                        r.getPrecio() != null ? String.valueOf(r.getPrecio()) : "",
-                        r.getAsiento() != null ? r.getAsiento() : ""
-                };
-                writer.writeNext(fila);
+                writer.writeNext(convertirReservaAFilaCsv(r));
             }
 
             writer.flush();
@@ -165,5 +199,27 @@ public class ReservaExportService {
             log.error("Error al escribir el archivo {}", archivoPath, e);
             throw new RuntimeException("Error al exportar archivo CSV: " + archivoPath.getFileName(), e);
         }
+    }
+
+    /**
+     * Transforma una entidad Reserva en un array de cadenas conforme a CABECERA_CSV.
+     * Utiliza Objects.toString para evitar comprobaciones manuales repetitivas de nulidad.
+     */
+    private String[] convertirReservaAFilaCsv(Reserva r) {
+        String fechaStr = (r.getFechaReserva() != null)
+                ? r.getFechaReserva().format(FORMATTER_FECHA_RESERVA)
+                : "";
+
+        return new String[] {
+                Objects.toString(r.getId(), ""),
+                Objects.toString(r.getNombrePasajero(), ""),
+                Objects.toString(r.getOrigen(), ""),
+                Objects.toString(r.getDestino(), ""),
+                Objects.toString(r.getCodigoPaisDestino(), ""),
+                fechaStr,
+                Objects.toString(r.getLocalizador(), ""),
+                Objects.toString(r.getPrecio(), ""),
+                Objects.toString(r.getAsiento(), "")
+        };
     }
 }
