@@ -56,9 +56,74 @@ id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,
 
 - **Lenguaje**: Java 21 (LTS).
 - **Framework Principal**: Spring Boot 3.4.3 (`spring-boot-starter-web` con servidor Tomcat embebido).
+- **Persistencia y ORM**: Spring Data JPA con Hibernate (`spring-boot-starter-data-jpa`).
+- **Base de Datos Relacional**: H2 Database (`com.h2database:h2`) configurada en modo archivo para persistencia de datos.
 - **Librería de Parseo**: OpenCSV 5.9 (`CsvToBeanBuilder` y `CSVWriter`).
 - **Gestor de Construcción**: Maven (a través del wrapper incluido `mvnw`).
 - **Frontend**: HTML5 semántico, CSS3 nativo (diseño responsive temático de aviación) y JavaScript Vanilla (`Fetch API`).
+
+---
+
+## Base de Datos Relacional (H2 + Spring Data JPA)
+
+El sistema integra una base de datos relacional mediante **Spring Data JPA (Hibernate)** y el motor **H2 Database**, lo que permite mantener persistencia de las reservas entre reinicios de la aplicación sin necesidad de instalar servicios o servidores externos.
+
+### 1. Estructura de la Tabla `reservas`
+
+La entidad `Reserva` está mapeada automáticamente a la tabla relacional `reservas`:
+
+| Columna | Tipo SQL | Restricciones / Clave | Descripción |
+| :--- | :--- | :--- | :--- |
+| `id` | `VARCHAR(60)` | **PRIMARY KEY**, NOT NULL | Identificador único inequívoco de la reserva. |
+| `nombre_pasajero` | `VARCHAR(255)` | NOT NULL | Nombre y apellidos del pasajero. |
+| `origen` | `VARCHAR(255)` | NOT NULL | Ciudad / aeropuerto de origen. |
+| `destino` | `VARCHAR(255)` | NOT NULL | Ciudad / aeropuerto de destino. |
+| `pais_destino` | `VARCHAR(10)` | NOT NULL | Código ISO de 2 letras del país de destino (`ES`, `FR`, etc.). |
+| `fecha_reserva` | `DATE` | NOT NULL | Fecha de la reserva (`yyyy-MM-dd`). |
+| `localizador` | `VARCHAR(50)` | Nullable | Localizador único o desambiguado. |
+| `precio` | `FLOAT(53)` | Nullable | Precio del billete. |
+| `asiento` | `VARCHAR(20)` | Nullable | Asiento asignado. |
+
+### 2. Acceso a la Consola Web de H2
+
+Spring Boot expone una consola web interactiva para inspeccionar las tablas, registros y ejecutar consultas SQL directamente:
+
+- **URL de la Consola**: [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+- **Parámetros de Conexión**:
+  - **Saved Settings**: `Generic H2 (Embedded)`
+  - **Driver Class**: `org.h2.Driver`
+  - **JDBC URL**: `jdbc:h2:file:./data/airtortilla_db`
+  - **User Name**: `sa`
+  - **Password**: *(dejar en blanco)*
+
+### 3. Consultas SQL de Ejemplo en la Consola
+
+```sql
+-- Consultar todas las reservas persistidas
+SELECT * FROM reservas;
+
+-- Consultar reservas hacia un país específico (ej. Italia)
+SELECT id, nombre_pasajero, origen, destino, localizador 
+FROM reservas 
+WHERE pais_destino = 'IT';
+
+-- Conteo de reservas agrupadas por país de destino
+SELECT pais_destino, COUNT(*) AS total_reservas 
+FROM reservas 
+GROUP BY pais_destino 
+ORDER BY total_reservas DESC;
+```
+
+### 4. Capa de Repositorio (`ReservaRepository`)
+
+La persistencia se gestiona a través de la interfaz `ReservaRepository`, que extiende de `JpaRepository<Reserva, String>` e incluye métodos de consulta derivados:
+
+```java
+public interface ReservaRepository extends JpaRepository<Reserva, String> {
+    List<Reserva> findByCodigoPaisDestino(String codigoPaisDestino);
+    List<Reserva> findByNombrePasajeroContainingIgnoreCase(String nombrePasajero);
+}
+```
 
 ---
 

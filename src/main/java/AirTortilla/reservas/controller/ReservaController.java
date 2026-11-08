@@ -33,9 +33,11 @@ public class ReservaController {
     }
 
     /**
-     * Obtiene el resumen y lista completa de reservas activas cargadas en el sistema.
+     * Obtiene el resumen y lista completa de reservas activas cargadas en el
+     * sistema.
      *
-     * @return 200 OK con KPIs (total reservas, países, grupos coincidentes) y la lista de reservas.
+     * @return 200 OK con KPIs (total reservas, países, grupos coincidentes) y la
+     *         lista de reservas.
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> obtenerReservasActivas() {
@@ -53,13 +55,13 @@ public class ReservaController {
                 "totalPaisesDestino", paisesDistintos,
                 "totalGruposCoincidentes", coincidencias.size(),
                 "coincidencias", coincidencias,
-                "reservas", reservas
-        ));
+                "reservas", reservas));
     }
 
     /**
      * Carga un archivo CSV subido por el usuario mediante multipart/form-data.
-     * Realiza el parseo, normalización y partición automática en ficheros por país de destino.
+     * Realiza el parseo, normalización y partición automática en ficheros por país
+     * de destino.
      *
      * @param archivo Archivo MultipartFile CSV enviado desde la interfaz web.
      * @return 200 OK con resumen de registros cargados y ficheros generados.
@@ -73,8 +75,7 @@ public class ReservaController {
                 "mensaje", "Archivo '" + archivo.getOriginalFilename() + "' procesado correctamente",
                 "totalReservas", reservas.size(),
                 "totalArchivosGenerados", archivos.size(),
-                "archivos", archivos
-        ));
+                "archivos", archivos));
     }
 
     /**
@@ -88,8 +89,7 @@ public class ReservaController {
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Archivos divididos por país de destino generados exitosamente",
                 "totalArchivos", archivos.size(),
-                "archivos", archivos
-        ));
+                "archivos", archivos));
     }
 
     /**
@@ -104,7 +104,8 @@ public class ReservaController {
 
     /**
      * Consulta un archivo en MODALIDAD TOTAL.
-     * Devuelve todas las reservas del país, el texto en crudo (raw CSV) y el reporte de colisiones.
+     * Devuelve todas las reservas del país, el texto en crudo (raw CSV) y el
+     * reporte de colisiones.
      *
      * @param nombreArchivo Nombre del fichero CSV a consultar.
      * @return 200 OK con ArchivoDetalleDto.
@@ -117,10 +118,12 @@ public class ReservaController {
 
     /**
      * Consulta un archivo en MODALIDAD LÍNEA A LÍNEA.
-     * Permite inspeccionar registro a registro con controles de navegación paso a paso.
+     * Permite inspeccionar registro a registro con controles de navegación paso a
+     * paso.
      *
      * @param nombreArchivo Nombre del fichero CSV.
-     * @param numero Número 1-based del registro solicitado (sin incluir cabecera).
+     * @param numero        Número 1-based del registro solicitado (sin incluir
+     *                      cabecera).
      * @return 200 OK con LineaReservaDto y datos de navegación.
      */
     @GetMapping("/archivos/{nombreArchivo}/linea")
@@ -149,9 +152,11 @@ public class ReservaController {
     }
 
     /**
-     * Obtiene el análisis de colisiones / pasajeros coincidentes (mismo Nombre, Origen y Destino).
+     * Obtiene el análisis de colisiones / pasajeros coincidentes (mismo Nombre,
+     * Origen y Destino).
      *
-     * @return 200 OK con la lista de grupos coincidentes y sus localizadores diferenciados.
+     * @return 200 OK con la lista de grupos coincidentes y sus localizadores
+     *         diferenciados.
      */
     @GetMapping("/coincidencias")
     public ResponseEntity<List<GrupoCoincidenciaDto>> obtenerCoincidencias() {
@@ -168,7 +173,6 @@ public class ReservaController {
         int borrados = fileService.limpiarArchivos();
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Archivos eliminados correctamente",
-                "totalBorrados", borrados
-        ));
+                "totalBorrados", borrados));
     }
 }

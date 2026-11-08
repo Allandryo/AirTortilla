@@ -2,41 +2,58 @@ package AirTortilla.reservas.model;
 
 import com.opencsv.bean.CsvBindByName;
 import com.opencsv.bean.CsvDate;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 import java.time.LocalDate;
 import java.util.Objects;
 
 /**
  * Representa una reserva en el sistema de AirTortilla.
- * Mapeada directamente desde archivo CSV mediante OpenCSV (CsvToBean).
+ * Mapeada directamente desde archivo CSV mediante OpenCSV (CsvToBean)
+ * y persistida como entidad relacional mediante Spring Data JPA / Hibernate.
  */
+@Entity
+@Table(name = "reservas")
 public class Reserva {
 
+    @Id
+    @Column(name = "id", length = 60, nullable = false)
     @CsvBindByName(column = "id", required = false)
     private String id;
 
+    @Column(name = "nombre_pasajero", nullable = false)
     @CsvBindByName(column = "nombre_pasajero", required = true)
     private String nombrePasajero;
 
+    @Column(name = "origen", nullable = false)
     @CsvBindByName(column = "origen", required = true)
     private String origen;
 
+    @Column(name = "destino", nullable = false)
     @CsvBindByName(column = "destino", required = true)
     private String destino;
 
+    @Column(name = "pais_destino", length = 10, nullable = false)
     @CsvBindByName(column = "pais_destino", required = true)
     private String codigoPaisDestino; // Código ISO de 2 letras (ej. "FR", "IT")
 
+    @Column(name = "fecha_reserva", nullable = false)
     @CsvBindByName(column = "fecha_reserva", required = true)
     @CsvDate(value = "yyyy-MM-dd")
     private LocalDate fechaReserva;
 
+    @Column(name = "localizador", length = 50)
     @CsvBindByName(column = "localizador", required = false)
     private String localizador;
 
+    @Column(name = "precio")
     @CsvBindByName(column = "precio", required = false)
     private Double precio;
 
+    @Column(name = "asiento", length = 20)
     @CsvBindByName(column = "asiento", required = false)
     private String asiento;
 
