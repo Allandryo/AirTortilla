@@ -5,6 +5,8 @@
 
 // Estado Global de la Aplicación
 const AppState = {
+    usuarioLogueado: null,
+    usuarios: [],
     reservas: [],
     archivos: [],
     coincidencias: [],
@@ -29,17 +31,22 @@ const COUNTRY_FLAGS = {
     'GB': '🇬🇧 Reino Unido'
 };
 
-// ==========================================================================
+function onEl(id, event, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+}
+
 // Inicialización
-// ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
+    initAuthEventListeners();
     initEventListeners();
-    cargarDatosIniciales();
+    initUsuarioEventListeners();
+    verificarSesionInicial();
 });
 
 function initEventListeners() {
     // Botones de acción principales
-    document.getElementById('btn-generar-archivos').addEventListener('click', generarArchivos);
+    onEl('btn-generar-archivos', 'click', generarArchivos);
 
     // Pestañas (Tabs)
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -47,50 +54,54 @@ function initEventListeners() {
     });
 
     // Filtros de búsqueda
-    document.getElementById('filtro-archivos').addEventListener('input', filtrarArchivos);
-    document.getElementById('filtro-reservas').addEventListener('input', filtrarReservas);
-    document.getElementById('select-filtro-pais').addEventListener('change', filtrarReservas);
+    onEl('filtro-archivos', 'input', filtrarArchivos);
+    onEl('filtro-reservas', 'input', filtrarReservas);
+    onEl('select-filtro-pais', 'change', filtrarReservasPorPais);
 
-    // Alerta de coincidencias
-    document.getElementById('btn-ver-coincidencias').addEventListener('click', () => {
-        cambiarPestana('tab-coincidencias');
-    });
+    // Vaciar base de datos de reservas
+    onEl('btn-vaciar-reservas', 'click', vaciarReservasBd);
 
     // Subida de archivos (Dropzone y File Input)
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('input-archivo-csv');
     const btnBrowse = document.getElementById('btn-browse-file');
 
-    btnBrowse.addEventListener('click', (e) => {
-        e.stopPropagation();
-        fileInput.click();
-    });
+    if (btnBrowse && fileInput) {
+        btnBrowse.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.click();
+        });
+    }
 
-    dropzone.addEventListener('click', () => fileInput.click());
+    if (dropzone && fileInput) {
+        dropzone.addEventListener('click', () => fileInput.click());
 
-    dropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropzone.classList.add('drag-over');
-    });
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('drag-over');
+        });
 
-    dropzone.addEventListener('dragleave', () => {
-        dropzone.classList.remove('drag-over');
-    });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('drag-over');
+        });
 
-    dropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropzone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length > 0) {
-            subirArchivoCsv(e.dataTransfer.files[0]);
-        }
-    });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                subirArchivoCsv(e.dataTransfer.files[0]);
+            }
+        });
+    }
 
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            subirArchivoCsv(e.target.files[0]);
-            fileInput.value = '';
-        }
-    });
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                subirArchivoCsv(e.target.files[0]);
+                fileInput.value = '';
+            }
+        });
+    }
 
     // Modales de Consulta
     initModalEventListeners();
@@ -99,30 +110,32 @@ function initEventListeners() {
 function initModalEventListeners() {
     // Modal Total
     const modalTotal = document.getElementById('modal-total');
-    document.getElementById('btn-cerrar-modal-total').addEventListener('click', () => cerrarModal(modalTotal));
-    document.getElementById('btn-cerrar-modal-total-footer').addEventListener('click', () => cerrarModal(modalTotal));
-    
+    onEl('btn-cerrar-modal-total', 'click', () => cerrarModal(modalTotal));
+    onEl('btn-cerrar-modal-total-footer', 'click', () => cerrarModal(modalTotal));
+
     // Toggle Vista Tabla / Raw en Modal Total
     const btnToggleTabla = document.getElementById('btn-toggle-tabla');
     const btnToggleRaw = document.getElementById('btn-toggle-raw');
     const tablaWrapper = document.getElementById('modal-total-tabla-wrapper');
     const rawWrapper = document.getElementById('modal-total-raw-wrapper');
 
-    btnToggleTabla.addEventListener('click', () => {
-        btnToggleTabla.classList.add('active');
-        btnToggleRaw.classList.remove('active');
-        tablaWrapper.style.display = 'block';
-        rawWrapper.style.display = 'none';
-    });
+    if (btnToggleTabla && btnToggleRaw && tablaWrapper && rawWrapper) {
+        btnToggleTabla.addEventListener('click', () => {
+            btnToggleTabla.classList.add('active');
+            btnToggleRaw.classList.remove('active');
+            tablaWrapper.style.display = 'block';
+            rawWrapper.style.display = 'none';
+        });
 
-    btnToggleRaw.addEventListener('click', () => {
-        btnToggleRaw.classList.add('active');
-        btnToggleTabla.classList.remove('active');
-        tablaWrapper.style.display = 'none';
-        rawWrapper.style.display = 'block';
-    });
+        btnToggleRaw.addEventListener('click', () => {
+            btnToggleRaw.classList.add('active');
+            btnToggleTabla.classList.remove('active');
+            tablaWrapper.style.display = 'none';
+            rawWrapper.style.display = 'block';
+        });
+    }
 
-    document.getElementById('btn-descargar-archivo-total').addEventListener('click', () => {
+    onEl('btn-descargar-archivo-total', 'click', () => {
         if (AppState.archivoActual) {
             descargarArchivoCsv(AppState.archivoActual);
         }
@@ -130,42 +143,43 @@ function initModalEventListeners() {
 
     // Modal Línea a Línea
     const modalLinea = document.getElementById('modal-linea');
-    document.getElementById('btn-cerrar-modal-linea').addEventListener('click', () => {
+    onEl('btn-cerrar-modal-linea', 'click', () => {
         detenerAutoPlay();
         cerrarModal(modalLinea);
     });
-    document.getElementById('btn-cerrar-modal-linea-footer').addEventListener('click', () => {
+    onEl('btn-cerrar-modal-linea-footer', 'click', () => {
         detenerAutoPlay();
         cerrarModal(modalLinea);
     });
 
     // Controles de navegación Línea a Línea
-    document.getElementById('btn-line-first').addEventListener('click', () => irALinea(1));
-    document.getElementById('btn-line-last').addEventListener('click', () => irALinea(AppState.totalLineasActual));
-    document.getElementById('btn-line-prev').addEventListener('click', () => irALinea(AppState.lineaActual - 1));
-    document.getElementById('btn-line-next').addEventListener('click', () => irALinea(AppState.lineaActual + 1));
+    onEl('btn-line-first', 'click', () => irALinea(1));
+    onEl('btn-line-last', 'click', () => irALinea(AppState.totalLineasActual));
+    onEl('btn-line-prev', 'click', () => irALinea(AppState.lineaActual - 1));
+    onEl('btn-line-next', 'click', () => irALinea(AppState.lineaActual + 1));
 
-    const slider = document.getElementById('line-range-slider');
-    slider.addEventListener('input', (e) => {
+    onEl('line-range-slider', 'input', (e) => {
         irALinea(parseInt(e.target.value, 10));
     });
 
-    document.getElementById('btn-line-autoplay').addEventListener('click', alternarAutoPlay);
-    document.getElementById('btn-cambiar-a-total').addEventListener('click', () => {
+    onEl('btn-line-autoplay', 'click', alternarAutoPlay);
+    onEl('btn-cambiar-a-total', 'click', () => {
         detenerAutoPlay();
         cerrarModal(modalLinea);
         abrirModalTotal(AppState.archivoActual);
     });
 
-    document.getElementById('btn-copiar-linea').addEventListener('click', () => {
-        const text = document.getElementById('card-raw-line').textContent;
-        navigator.clipboard.writeText(text).then(() => {
+    onEl('btn-copiar-linea', 'click', () => {
+        const cardRaw = document.getElementById('card-raw-line');
+        if (!cardRaw) return;
+        navigator.clipboard.writeText(cardRaw.textContent).then(() => {
             mostrarToast('Línea copiada al portapapeles', 'success');
         });
     });
 
     // Cerrar al hacer clic fuera del contenedor modal
-    [modalTotal, modalLinea].forEach(modal => {
+    const modalUsuario = document.getElementById('modal-usuario');
+    [modalTotal, modalLinea, modalUsuario].filter(Boolean).forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 detenerAutoPlay();
@@ -175,9 +189,7 @@ function initModalEventListeners() {
     });
 }
 
-// ==========================================================================
 // Carga de Datos desde la API REST (Fetch)
-// ==========================================================================
 async function cargarDatosIniciales() {
     try {
         await Promise.all([cargarReservasActivas(), cargarListaArchivos()]);
@@ -244,6 +256,11 @@ async function subirArchivoCsv(file) {
         const data = await res.json();
         await cargarDatosIniciales();
         mostrarToast(data.mensaje || 'Archivo procesado correctamente', 'success');
+        if (data.filasOmitidas > 0 && Array.isArray(data.detallesOmitidas) && data.detallesOmitidas.length > 0) {
+            const resumen = data.detallesOmitidas.slice(0, 2).join(' | ');
+            const extra = data.detallesOmitidas.length > 2 ? ` (+${data.detallesOmitidas.length - 2} más)` : '';
+            mostrarToast(`Filas omitidas: ${resumen}${extra}`, 'info');
+        }
     } catch (err) {
         mostrarToast(err.message, 'error');
     }
@@ -264,9 +281,27 @@ async function generarArchivos() {
     }
 }
 
-// ==========================================================================
 // Renderizado y Vistas
-// ==========================================================================
+async function vaciarReservasBd() {
+    if (!AppState.usuarioLogueado || !AppState.usuarioLogueado.esAdmin) {
+        mostrarToast('Acceso denegado: solo los administradores pueden vaciar la base de datos.', 'error');
+        return;
+    }
+    if (!confirm('¿Estás seguro de que quieres eliminar todas las reservas de la base de datos y los archivos generados?')) {
+        return;
+    }
+    try {
+        const res = await fetch('/api/reservas', { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.mensaje || data.error || 'Error al vaciar las reservas');
+
+        mostrarToast(data.mensaje || 'Reservas eliminadas correctamente', 'success');
+        await cargarDatosIniciales();
+    } catch (err) {
+        mostrarToast(err.message, 'error');
+    }
+}
+
 function actualizarKPIs(data) {
     document.getElementById('kpi-total-reservas').textContent = data.totalReservas || 0;
     document.getElementById('badge-contador-reservas').textContent = data.totalReservas || 0;
@@ -276,17 +311,6 @@ function actualizarKPIs(data) {
     const totalCoincidencias = data.totalGruposCoincidentes || 0;
     document.getElementById('kpi-total-coincidencias').textContent = totalCoincidencias;
     document.getElementById('badge-contador-coincidencias').textContent = totalCoincidencias;
-
-    const alertBox = document.getElementById('alert-coincidencias');
-    const alertTexto = document.getElementById('alert-coincidencias-texto');
-
-    if (totalCoincidencias > 0) {
-        alertBox.style.display = 'flex';
-        const nombres = data.coincidencias.map(g => `${g.nombrePasajero} (${g.totalCoincidentes} pax)`).join(', ');
-        alertTexto.textContent = `Se detectaron ${totalCoincidencias} grupos con pasajeros coincidentes en Nombre, Origen y Destino: ${nombres}. Cada uno posee localizador e ID inequívoco.`;
-    } else {
-        alertBox.style.display = 'none';
-    }
 }
 
 function renderizarGridArchivos(archivos) {
@@ -442,9 +466,7 @@ function actualizarFiltroPaises(reservas) {
     select.value = valorPrevio;
 }
 
-// ==========================================================================
 // Filtros en Tiempo Real
-// ==========================================================================
 function filtrarArchivos() {
     const query = document.getElementById('filtro-archivos').value.toLowerCase().trim();
     if (!query) {
@@ -458,6 +480,37 @@ function filtrarArchivos() {
         (a.fechaReserva && a.fechaReserva.includes(query))
     );
     renderizarGridArchivos(filtrados);
+}
+
+async function filtrarReservasPorPais() {
+    const pais = document.getElementById('select-filtro-pais').value;
+    const query = document.getElementById('filtro-reservas').value.toLowerCase().trim();
+
+    try {
+        let url = '/api/reservas';
+        if (pais) {
+            url += `?pais=${encodeURIComponent(pais)}`;
+        }
+        const res = await fetch(url);
+        if (res.ok) {
+            const data = await res.json();
+            let lista = data.reservas || [];
+            if (query) {
+                lista = lista.filter(r =>
+                    (r.nombrePasajero && r.nombrePasajero.toLowerCase().includes(query)) ||
+                    (r.origen && r.origen.toLowerCase().includes(query)) ||
+                    (r.destino && r.destino.toLowerCase().includes(query)) ||
+                    (r.id && r.id.toLowerCase().includes(query)) ||
+                    (r.localizador && r.localizador.toLowerCase().includes(query))
+                );
+            }
+            renderizarTablaReservas(lista);
+            return;
+        }
+    } catch (e) {
+        console.warn('Consulta directa a BD falló, usando filtro local:', e);
+    }
+    filtrarReservas();
 }
 
 function filtrarReservas() {
@@ -478,9 +531,7 @@ function filtrarReservas() {
     renderizarTablaReservas(filtradas);
 }
 
-// ==========================================================================
 // Modalidad Total (Full File Viewer)
-// ==========================================================================
 async function abrirModalTotal(nombreArchivo) {
     AppState.archivoActual = nombreArchivo;
     const modal = document.getElementById('modal-total');
@@ -492,11 +543,12 @@ async function abrirModalTotal(nombreArchivo) {
 
         AppState.modalidadTotalDetalle = data;
 
-        document.getElementById('modal-total-titulo').textContent = data.info.nombreArchivo;
+        document.getElementById('modal-total-titulo').textContent = `${data.info.nombreArchivo}`;
         document.getElementById('modal-total-metadatos').innerHTML = `
+            <div class="meta-item"><span class="meta-label">Fuente:</span> <span class="meta-value" style="color:#10b981; font-weight:600;">Base de Datos H2</span></div>
             <div class="meta-item"><span class="meta-label">País ISO:</span> <span class="meta-value">${data.info.codigoPaisDestino}</span></div>
             <div class="meta-item"><span class="meta-label">Fecha:</span> <span class="meta-value">${data.info.fechaReserva}</span></div>
-            <div class="meta-item"><span class="meta-label">Total Reservas:</span> <span class="meta-value">${data.info.totalReservas}</span></div>
+            <div class="meta-item"><span class="meta-label">Total Reservas en BD:</span> <span class="meta-value">${data.info.totalReservas}</span></div>
             <div class="meta-item"><span class="meta-label">Tamaño:</span> <span class="meta-value">${(data.info.tamanoBytes / 1024).toFixed(2)} KB</span></div>
         `;
 
@@ -529,15 +581,13 @@ async function abrirModalTotal(nombreArchivo) {
     }
 }
 
-// ==========================================================================
 // Modalidad Línea a Línea (Line-by-Line Viewer)
-// ==========================================================================
 async function abrirModalLinea(nombreArchivo, numeroLinea = 1) {
     AppState.archivoActual = nombreArchivo;
     AppState.lineaActual = numeroLinea;
     const modal = document.getElementById('modal-linea');
 
-    document.getElementById('modal-linea-titulo').textContent = `Explorador Línea a Línea: ${nombreArchivo}`;
+    document.getElementById('modal-linea-titulo').textContent = `Explorador Línea a Línea (Base de Datos H2): ${nombreArchivo}`;
     await irALinea(numeroLinea);
     abrirModal(modal);
 }
@@ -623,9 +673,7 @@ function detenerAutoPlay() {
     }
 }
 
-// ==========================================================================
 // Utilidades de Interfaz (Tabs, Modales, Toasts)
-// ==========================================================================
 function cambiarPestana(tabId) {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabId);
@@ -658,11 +706,12 @@ function mostrarToast(mensaje, tipo = 'info') {
     toast.innerHTML = `<span style="font-weight:bold;">${icon}</span> <span>${escapeHtml(mensaje)}</span>`;
 
     container.appendChild(toast);
+    const duration = tipo === 'error' ? 6000 : 3500;
     setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.3s ease';
         setTimeout(() => toast.remove(), 300);
-    }, 3500);
+    }, duration);
 }
 
 function escapeHtml(text) {
@@ -670,4 +719,476 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Módulo de Autenticación y Control de Sesión
+
+function rellenarCredencialesPrueba(username, password) {
+    const userInput = document.getElementById('login-username');
+    const passInput = document.getElementById('login-password');
+    const errorAlert = document.getElementById('login-error-alert');
+    if (errorAlert) {
+        errorAlert.style.display = 'none';
+        errorAlert.textContent = '';
+    }
+    if (userInput) userInput.value = username;
+    if (passInput) {
+        passInput.value = password;
+        passInput.focus();
+    }
+}
+
+function initAuthEventListeners() {
+    const formLogin = document.getElementById('form-login');
+    if (formLogin) {
+        formLogin.addEventListener('submit', (e) => {
+            e.preventDefault();
+            ejecutarLogin();
+        });
+    }
+
+    onEl('btn-chip-admin', 'click', () => rellenarCredencialesPrueba('admin', 'admin123'));
+    onEl('btn-chip-normal', 'click', () => rellenarCredencialesPrueba('usuario', 'user123'));
+    onEl('btn-logout', 'click', ejecutarLogout);
+}
+
+async function verificarSesionInicial() {
+    try {
+        const res = await fetch('/api/auth/session');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.autenticado && data.usuario) {
+                AppState.usuarioLogueado = data.usuario;
+                mostrarAppPrincipal();
+                await cargarDatosIniciales();
+                if (AppState.usuarioLogueado.esAdmin) {
+                    await cargarUsuarios();
+                }
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('Sin sesión previa activa:', e);
+    }
+    mostrarPantallaLogin();
+}
+
+function mostrarPantallaLogin() {
+    const modalLogin = document.getElementById('modal-login');
+    const appContainer = document.getElementById('app-container');
+
+    if (modalLogin) modalLogin.style.display = 'flex';
+    if (appContainer) appContainer.style.display = 'none';
+    configurarVisibilidadSegunRol();
+
+    const errorAlert = document.getElementById('login-error-alert');
+    if (errorAlert) {
+        errorAlert.style.display = 'none';
+        errorAlert.textContent = '';
+    }
+
+    const usernameInput = document.getElementById('login-username');
+    if (usernameInput) {
+        usernameInput.value = '';
+        usernameInput.focus();
+    }
+    const passwordInput = document.getElementById('login-password');
+    if (passwordInput) passwordInput.value = '';
+}
+
+function mostrarAppPrincipal() {
+    const modalLogin = document.getElementById('modal-login');
+    const appContainer = document.getElementById('app-container');
+
+    if (modalLogin) modalLogin.style.display = 'none';
+    if (appContainer) appContainer.style.display = 'block';
+
+    actualizarBadgeUsuarioHeader();
+    configurarVisibilidadSegunRol();
+}
+
+function actualizarBadgeUsuarioHeader() {
+    const usr = AppState.usuarioLogueado;
+    if (!usr) return;
+
+    const nombreElem = document.getElementById('header-user-name');
+    const roleElem = document.getElementById('header-user-role');
+    const avatarElem = document.getElementById('header-user-avatar');
+
+    if (nombreElem) nombreElem.textContent = usr.nombre || usr.username;
+    if (roleElem) {
+        roleElem.textContent = usr.rol;
+        roleElem.className = 'user-role-pill ' + (usr.esAdmin ? 'role-admin' : 'role-normal');
+    }
+    if (avatarElem) {
+        avatarElem.textContent = usr.esAdmin ? '👑' : '👤';
+    }
+}
+
+function configurarVisibilidadSegunRol() {
+    const usr = AppState.usuarioLogueado;
+    const tabBtnUsuarios = document.getElementById('tab-btn-usuarios');
+    const tabUsuarios = document.getElementById('tab-usuarios');
+    const btnVaciarReservas = document.getElementById('btn-vaciar-reservas');
+
+    if (usr && usr.esAdmin) {
+        if (tabBtnUsuarios) tabBtnUsuarios.style.display = 'inline-flex';
+        if (btnVaciarReservas) btnVaciarReservas.style.display = 'inline-flex';
+    } else {
+        if (tabBtnUsuarios) tabBtnUsuarios.style.display = 'none';
+        if (btnVaciarReservas) btnVaciarReservas.style.display = 'none';
+        if (tabUsuarios && tabUsuarios.classList.contains('active')) {
+            cambiarPestana('tab-archivos');
+        }
+    }
+}
+
+async function ejecutarLogin() {
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    const errorAlert = document.getElementById('login-error-alert');
+    const btnSubmit = document.getElementById('btn-login-submit');
+
+    const username = usernameInput ? usernameInput.value.trim() : '';
+    const password = passwordInput ? passwordInput.value : '';
+
+    if (!username || !password) {
+        if (errorAlert) {
+            errorAlert.textContent = 'Por favor, introduce usuario y contraseña.';
+            errorAlert.style.display = 'block';
+        }
+        return;
+    }
+
+    try {
+        if (btnSubmit) {
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = `<span>Comprobando en tabla 'usuarios'...</span>`;
+        }
+        if (errorAlert) errorAlert.style.display = 'none';
+
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.mensaje || 'Error al iniciar sesión');
+        }
+
+        AppState.usuarioLogueado = data.usuario;
+        mostrarAppPrincipal();
+        mostrarToast(data.mensaje || `Bienvenido/a, ${data.usuario.nombre}`, 'success');
+
+        await cargarDatosIniciales();
+        if (AppState.usuarioLogueado.esAdmin) {
+            await cargarUsuarios();
+        }
+
+    } catch (err) {
+        if (errorAlert) {
+            errorAlert.textContent = err.message;
+            errorAlert.style.display = 'block';
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                    <polyline points="10 17 15 12 10 7"/>
+                    <line x1="15" y1="12" x2="3" y2="12"/>
+                </svg>
+                Iniciar Sesión
+            `;
+        }
+    }
+}
+
+async function ejecutarLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+        console.warn('Error durante logout:', e);
+    }
+    AppState.usuarioLogueado = null;
+    AppState.usuarios = [];
+    mostrarToast('Sesión finalizada. Hasta pronto.', 'info');
+    mostrarPantallaLogin();
+}
+
+// Módulo de Gestión de Usuarios (Exclusivo Administrador)
+
+function initUsuarioEventListeners() {
+    const btnCrear = document.getElementById('btn-abrir-crear-usuario');
+    if (btnCrear) {
+        btnCrear.addEventListener('click', abrirModalCrearUsuario);
+    }
+
+    const modalUsuario = document.getElementById('modal-usuario');
+    const btnCerrar = document.getElementById('btn-cerrar-modal-usuario');
+    const btnCancelar = document.getElementById('btn-cancelar-modal-usuario');
+
+    if (btnCerrar) btnCerrar.addEventListener('click', () => cerrarModal(modalUsuario));
+    if (btnCancelar) btnCancelar.addEventListener('click', () => cerrarModal(modalUsuario));
+
+    const btnGuardar = document.getElementById('btn-guardar-usuario');
+    if (btnGuardar) {
+        btnGuardar.addEventListener('click', guardarUsuario);
+    }
+
+    const formModal = document.getElementById('form-usuario-modal');
+    if (formModal) {
+        formModal.addEventListener('submit', (e) => {
+            e.preventDefault();
+            guardarUsuario();
+        });
+    }
+
+    const filtroUsr = document.getElementById('filtro-usuarios');
+    if (filtroUsr) {
+        filtroUsr.addEventListener('input', filtrarUsuarios);
+    }
+}
+
+async function cargarUsuarios() {
+    if (!AppState.usuarioLogueado || !AppState.usuarioLogueado.esAdmin) return;
+
+    try {
+        const res = await fetch('/api/usuarios');
+        if (!res.ok) {
+            if (res.status === 403) return;
+            throw new Error('No se pudo cargar la lista de usuarios');
+        }
+        AppState.usuarios = await res.json();
+        const badge = document.getElementById('badge-contador-usuarios');
+        if (badge) badge.textContent = AppState.usuarios.length;
+        renderizarTablaUsuarios(AppState.usuarios);
+    } catch (err) {
+        console.error('Error al cargar usuarios:', err);
+    }
+}
+
+function renderizarTablaUsuarios(usuarios) {
+    const tbody = document.getElementById('tbody-usuarios');
+    if (!tbody) return;
+
+    if (!usuarios || usuarios.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 32px; color: var(--text-secondary);">
+                    No se encontraron usuarios registrados en la tabla 'usuarios'.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const idSesion = AppState.usuarioLogueado ? AppState.usuarioLogueado.id : null;
+
+    tbody.innerHTML = usuarios.map(u => {
+        const esAdmin = u.rol === 'ADMIN';
+        const rolBadge = esAdmin
+            ? `<span class="badge-role-admin">👑 ADMIN</span>`
+            : `<span class="badge-role-normal">👤 NORMAL</span>`;
+
+        const permisosDesc = esAdmin
+            ? `<strong>Acceso total:</strong> Gestionar usuarios, vaciar BD y usar toda la página`
+            : `<strong>Operativo:</strong> Usar página (subida CSV, consultas y descargas)`;
+
+        const esPropioUsuario = idSesion && idSesion === u.id;
+
+        return `
+            <tr>
+                <td><span class="badge-id">${u.id}</span></td>
+                <td><strong>${escapeHtml(u.username)}</strong> ${esPropioUsuario ? '<span style="font-size:0.75rem; color:#06b6d4;">(Tú)</span>' : ''}</td>
+                <td>${escapeHtml(u.nombre)}</td>
+                <td>${rolBadge}</td>
+                <td><span style="font-size:0.83rem; color: var(--text-secondary);">${permisosDesc}</span></td>
+                <td>
+                    <div class="actions-cell">
+                        <button class="btn-action" onclick="abrirModalEditarUsuario(${u.id})" title="Editar usuario">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            Editar
+                        </button>
+                        ${!esPropioUsuario ? `
+                            <button class="btn-action btn-action-delete" onclick="eliminarUsuario(${u.id}, '${escapeHtml(u.username)}')" title="Eliminar usuario">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                                Eliminar
+                            </button>
+                        ` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filtrarUsuarios() {
+    const q = document.getElementById('filtro-usuarios').value.trim().toLowerCase();
+    if (!q) {
+        renderizarTablaUsuarios(AppState.usuarios);
+        return;
+    }
+    const filtrados = AppState.usuarios.filter(u =>
+        (u.username && u.username.toLowerCase().includes(q)) ||
+        (u.nombre && u.nombre.toLowerCase().includes(q)) ||
+        (u.rol && u.rol.toLowerCase().includes(q))
+    );
+    renderizarTablaUsuarios(filtrados);
+}
+
+function abrirModalCrearUsuario() {
+    const modal = document.getElementById('modal-usuario');
+    document.getElementById('modal-usuario-titulo').textContent = 'Crear Nuevo Usuario';
+    document.getElementById('modal-usuario-badge').textContent = 'Alta en Tabla usuarios (H2 DB)';
+
+    document.getElementById('input-usuario-id').value = '';
+    document.getElementById('input-usuario-username').value = '';
+    document.getElementById('input-usuario-username').disabled = false;
+    document.getElementById('input-usuario-nombre').value = '';
+    document.getElementById('input-usuario-password').value = '';
+    document.getElementById('input-usuario-password').required = true;
+    document.getElementById('hint-usuario-password').textContent = 'Obligatoria al crear usuario nuevo.';
+    document.getElementById('select-usuario-rol').value = 'NORMAL';
+
+    const err = document.getElementById('modal-usuario-error');
+    if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+    }
+
+    abrirModal(modal);
+}
+
+function abrirModalEditarUsuario(id) {
+    const usuario = AppState.usuarios.find(u => u.id === id);
+    if (!usuario) {
+        mostrarToast('Usuario no encontrado', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('modal-usuario');
+    document.getElementById('modal-usuario-titulo').textContent = `Editar Usuario: ${usuario.username}`;
+    document.getElementById('modal-usuario-badge').textContent = `Modificar ID #${usuario.id}`;
+
+    document.getElementById('input-usuario-id').value = usuario.id;
+    document.getElementById('input-usuario-username').value = usuario.username;
+    document.getElementById('input-usuario-nombre').value = usuario.nombre;
+    document.getElementById('input-usuario-password').value = '';
+    document.getElementById('input-usuario-password').required = false;
+    document.getElementById('hint-usuario-password').textContent = 'Dejar en blanco para mantener la contraseña actual.';
+    document.getElementById('select-usuario-rol').value = usuario.rol || 'NORMAL';
+
+    const err = document.getElementById('modal-usuario-error');
+    if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+    }
+
+    abrirModal(modal);
+}
+
+async function guardarUsuario() {
+    const id = document.getElementById('input-usuario-id').value;
+    const username = document.getElementById('input-usuario-username').value.trim();
+    const nombre = document.getElementById('input-usuario-nombre').value.trim();
+    const password = document.getElementById('input-usuario-password').value;
+    const rol = document.getElementById('select-usuario-rol').value;
+
+    if (!username) {
+        mostrarErrorModalUsuario('El nombre de usuario es obligatorio.');
+        return;
+    }
+    if (!nombre) {
+        mostrarErrorModalUsuario('El nombre completo es obligatorio.');
+        return;
+    }
+    if (!id && !password) {
+        mostrarErrorModalUsuario('La contraseña es obligatoria para nuevos usuarios.');
+        return;
+    }
+
+    const payload = {
+        username,
+        nombre,
+        rol
+    };
+    if (password && password.trim() !== '') {
+        payload.password = password.trim();
+    }
+
+    const esEdicion = Boolean(id);
+    const url = esEdicion ? `/api/usuarios/${id}` : '/api/usuarios';
+    const method = esEdicion ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.mensaje || 'Error al guardar usuario en la base de datos');
+        }
+
+        cerrarModal(document.getElementById('modal-usuario'));
+        mostrarToast(data.mensaje || 'Usuario guardado correctamente', 'success');
+
+        await cargarUsuarios();
+
+        // Si se actualizó el usuario propio del admin en sesión, actualizar header
+        if (esEdicion && AppState.usuarioLogueado && AppState.usuarioLogueado.id === Number(id)) {
+            AppState.usuarioLogueado.username = username;
+            AppState.usuarioLogueado.nombre = nombre;
+            AppState.usuarioLogueado.rol = rol;
+            AppState.usuarioLogueado.esAdmin = rol === 'ADMIN';
+            actualizarBadgeUsuarioHeader();
+            configurarVisibilidadSegunRol();
+        }
+
+    } catch (err) {
+        mostrarErrorModalUsuario(err.message);
+    }
+}
+
+function mostrarErrorModalUsuario(msg) {
+    const err = document.getElementById('modal-usuario-error');
+    if (err) {
+        err.textContent = msg;
+        err.style.display = 'block';
+    }
+}
+
+async function eliminarUsuario(id, username) {
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario '${username}' de la tabla 'usuarios'?`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.mensaje || 'Error al eliminar el usuario');
+        }
+
+        mostrarToast(data.mensaje || `Usuario '${username}' eliminado`, 'success');
+        await cargarUsuarios();
+    } catch (err) {
+        mostrarToast(err.message, 'error');
+    }
 }

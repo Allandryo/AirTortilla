@@ -6,17 +6,41 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDate;
 import java.util.Objects;
 
 /**
- * Representa una reserva en el sistema de AirTortilla.
- * Mapeada directamente desde archivo CSV mediante OpenCSV (CsvToBean)
- * y persistida como entidad relacional mediante Spring Data JPA / Hibernate.
+ * ¿QUÉ ES ESTA CLASE Y CÓMO FUNCIONA? (Explicación para principiantes)
+ * 
+ * Esta clase cumple un DOBLE papel en el programa:
+ *
+ * 1. ES UNA ENTIDAD DE BASE DE DATOS (JPA / Hibernate):
+ *    - La anotación @Entity le dice a Spring: "Esta clase representa una tabla en la BD".
+ *    - @Table(name = "reservas") indica que la tabla se llama "reservas".
+ *    - Cada atributo (id, nombrePasajero, etc.) se corresponde con una columna (@Column).
+ *    - @Id marca la clave primaria de la tabla (el identificador único).
+ *    - Los 'uniqueConstraints' definen reglas en la BD para evitar duplicados:
+ *        * Un pasajero no puede tener dos reservas el mismo día.
+ *        * Un asiento no puede ocuparse dos veces en el mismo vuelo y día.
+ *        * Un localizador no puede repetirse.
+ *
+ * 2. ES EL MODELO DE LECTURA DEL ARCHIVO CSV (OpenCSV):
+ *    - Las anotaciones @CsvBindByName(column = "nombre") le dicen a la librería OpenCSV
+ *      con qué columna del archivo CSV se debe rellenar cada campo.
+ *    - Por ejemplo: @CsvBindByName(column = "precio") lee el precio del archivo y lo guarda
+ *      en la variable 'precio'.
  */
 @Entity
-@Table(name = "reservas")
+@Table(
+    name = "reservas",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_reserva_pasajero_fecha", columnNames = {"nombre_pasajero", "fecha_reserva"}),
+        @UniqueConstraint(name = "uk_reserva_vuelo_asiento", columnNames = {"origen", "destino", "fecha_reserva", "asiento"}),
+        @UniqueConstraint(name = "uk_reserva_localizador", columnNames = {"localizador"})
+    }
+)
 public class Reserva {
 
     @Id
@@ -63,15 +87,15 @@ public class Reserva {
     public Reserva(String id, String nombrePasajero, String origen, String destino,
                    String codigoPaisDestino, LocalDate fechaReserva, String localizador,
                    Double precio, String asiento) {
-        this.id = id;
-        this.nombrePasajero = nombrePasajero;
-        this.origen = origen;
-        this.destino = destino;
-        this.codigoPaisDestino = codigoPaisDestino;
-        this.fechaReserva = fechaReserva;
-        this.localizador = localizador;
-        this.precio = precio;
-        this.asiento = asiento;
+        setId(id);
+        setNombrePasajero(nombrePasajero);
+        setOrigen(origen);
+        setDestino(destino);
+        setCodigoPaisDestino(codigoPaisDestino);
+        setFechaReserva(fechaReserva);
+        setLocalizador(localizador);
+        setPrecio(precio);
+        setAsiento(asiento);
     }
 
     public String getId() {
@@ -79,7 +103,7 @@ public class Reserva {
     }
 
     public void setId(String id) {
-        this.id = id;
+        this.id = (id != null && !id.isBlank()) ? id.trim() : null;
     }
 
     public String getNombrePasajero() {
@@ -87,7 +111,7 @@ public class Reserva {
     }
 
     public void setNombrePasajero(String nombrePasajero) {
-        this.nombrePasajero = nombrePasajero;
+        this.nombrePasajero = nombrePasajero != null ? nombrePasajero.trim() : null;
     }
 
     public String getOrigen() {
@@ -95,7 +119,7 @@ public class Reserva {
     }
 
     public void setOrigen(String origen) {
-        this.origen = origen;
+        this.origen = origen != null ? origen.trim() : null;
     }
 
     public String getDestino() {
@@ -103,7 +127,7 @@ public class Reserva {
     }
 
     public void setDestino(String destino) {
-        this.destino = destino;
+        this.destino = destino != null ? destino.trim() : null;
     }
 
     public String getCodigoPaisDestino() {
@@ -127,7 +151,7 @@ public class Reserva {
     }
 
     public void setLocalizador(String localizador) {
-        this.localizador = localizador;
+        this.localizador = (localizador != null && !localizador.isBlank()) ? localizador.trim() : null;
     }
 
     public Double getPrecio() {
@@ -143,7 +167,7 @@ public class Reserva {
     }
 
     public void setAsiento(String asiento) {
-        this.asiento = asiento;
+        this.asiento = (asiento != null && !asiento.isBlank()) ? asiento.trim().toUpperCase() : null;
     }
 
     /**

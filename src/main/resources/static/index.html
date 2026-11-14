@@ -4,40 +4,155 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AirTortilla - Gestión y Distribución de Reservas por País de Destino</title>
-    <meta name="description" content="Sistema de gestión, filtrado y división de reservas por país de destino y fecha en formato AirTortilla_XX_YYYY_MM_DD con consultas en modalidad total y línea a línea.">
+    <meta name="description" content="Sistema de gestión, filtrado y división de reservas por país de destino con autenticación y control de roles.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=20261111">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Top Navigation Bar -->
-        <header class="app-header">
-            <div class="header-brand">
-                <div class="brand-logo-icon">
+
+    <!-- OVERLAY DE LOGIN BLOQUEANTE AL INICIAR LA PÁGINA -->
+    <div id="modal-login" class="login-overlay">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="brand-logo-icon login-logo">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
                     </svg>
                 </div>
-                <div>
-                    <h1 class="brand-title">AirTortilla</h1>
-                    <p class="brand-subtitle">Gestión y Distribución de Reservas • Filtro por País de Destino</p>
+                <h1 class="login-title">AirTortilla</h1>
+                <p class="login-subtitle">Control de Acceso • Base de Datos Relacional</p>
+                <div class="login-db-notice">
+                    <span class="db-dot"></span>
+                    <span>Verificación en tiempo real contra la tabla <code>usuarios</code> (H2 DB)</span>
                 </div>
             </div>
-            <div class="header-actions">
-                <div class="system-status-badge">
-                    <span class="status-dot"></span>
-                    <span>Backend Spring Boot 3 & OpenCSV 5.9</span>
+
+            <form id="form-login" class="login-form">
+                <div class="form-group">
+                    <label for="login-username" class="form-label">Usuario:</label>
+                    <div class="input-icon-wrapper">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <input type="text" id="login-username" class="form-control" placeholder="Introduce tu usuario" required autocomplete="username">
+                    </div>
                 </div>
-                <button id="btn-generar-archivos" class="btn btn-primary" title="Generar ficheros AirTortilla_XX_YYYY_MM_DD">
+
+                <div class="form-group">
+                    <label for="login-password" class="form-label">Contraseña:</label>
+                    <div class="input-icon-wrapper">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        <input type="password" id="login-password" class="form-control" placeholder="Introduce tu contraseña" required autocomplete="current-password">
+                    </div>
+                </div>
+
+                <div id="login-error-alert" class="login-error" style="display: none;"></div>
+
+                <button type="submit" id="btn-login-submit" class="btn btn-primary btn-block btn-lg">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="10 17 15 12 10 7"/>
+                        <line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                    Iniciar Sesión
+                </button>
+            </form>
+
+            <div class="login-quick-access">
+                <span class="quick-access-label">Cuentas creadas por defecto en la BD:</span>
+                <div class="quick-chips">
+                    <button type="button" class="quick-chip chip-admin" id="btn-chip-admin" title="Rellenar como Administrador">
+                        <span class="chip-badge">ADMIN</span>
+                        <strong>admin</strong> / <code>admin123</code>
+                    </button>
+                    <button type="button" class="quick-chip chip-normal" id="btn-chip-normal" title="Rellenar como Usuario Normal">
+                        <span class="chip-badge">NORMAL</span>
+                        <strong>usuario</strong> / <code>user123</code>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTENEDOR PRINCIPAL DE LA APLICACIÓN (OCULTO HASTA INICIAR SESIÓN) -->
+    <div class="app-container" id="app-container" style="display: none;">
+        <!-- Top Navigation Bar -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="header-brand">
+                    <div class="brand-logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="brand-title">AirTortilla</h1>
+                        <p class="brand-subtitle">Gestión de Reservas</p>
+                    </div>
+                </div>
+
+                <!-- Main Navigation Tabs -->
+                <nav class="nav-tabs header-nav-tabs" role="tablist">
+                    <button class="tab-btn active" data-tab="tab-archivos" role="tab" id="tab-btn-archivos" title="Ficheros Generados por Destino">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span>Ficheros</span>
+                        <span class="nav-count-pill" id="badge-contador-archivos">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="tab-reservas" role="tab" id="tab-btn-reservas" title="Listado General de Reservas">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <span>Reservas</span>
+                        <span class="nav-count-pill" id="badge-contador-reservas">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="tab-coincidencias" role="tab" id="tab-btn-coincidencias" title="Desambiguación de Pasajeros">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span>Coincidencias</span>
+                        <span class="nav-count-pill" id="badge-contador-coincidencias">0</span>
+                    </button>
+                    <!-- Pestaña exclusiva para ADMINISTRADORES -->
+                    <button class="tab-btn admin-only-tab" data-tab="tab-usuarios" role="tab" id="tab-btn-usuarios" style="display: none;" title="Gestión de Usuarios (Admin)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span>Usuarios</span>
+                        <span class="nav-count-pill" id="badge-contador-usuarios">0</span>
+                    </button>
+                </nav>
+            </div>
+            <div class="header-actions">
+                <div class="system-status-badge" title="Base de Datos H2 Activa">
+                    <span class="status-dot"></span>
+                    <span>H2 DB</span>
+                </div>
+
+                <!-- Perfil del Usuario Autenticado -->
+                <div class="user-profile-badge" id="header-user-info">
+                    <div class="user-avatar-circle" id="header-user-avatar">👤</div>
+                    <div class="user-details">
+                        <span class="user-name-text" id="header-user-name">Usuario</span>
+                        <span class="user-role-pill" id="header-user-role">ADMIN</span>
+                    </div>
+                    <button id="btn-logout" class="btn btn-outline-danger btn-xs" title="Cerrar sesión">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                            <polyline points="16 17 21 12 16 7"/>
+                            <line x1="21" y1="12" x2="9" y2="12"/>
+                        </svg>
+                        Salir
+                    </button>
+                </div>
+
+                <button id="btn-generar-archivos" class="btn btn-primary btn-sm-header" title="Generar ficheros AirTortilla_XX_YYYY_MM_DD">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                         <polyline points="14 2 14 8 20 8"/>
                         <line x1="12" y1="18" x2="12" y2="12"/>
                         <line x1="9" y1="15" x2="15" y2="15"/>
                     </svg>
-                    Dividir y Generar Archivos
+                    Generar
                 </button>
             </div>
         </header>
@@ -50,7 +165,7 @@
                     <span class="metric-icon">📋</span>
                 </div>
                 <div class="metric-value" id="kpi-total-reservas">0</div>
-                <div class="metric-footer">Registros activos en memoria</div>
+                <div class="metric-footer">Registros persistidos en Base de Datos H2</div>
             </div>
 
             <div class="metric-card">
@@ -81,16 +196,6 @@
             </div>
         </section>
 
-        <!-- Notification Banner / Collision Alert -->
-        <section id="alert-coincidencias" class="alert-box" style="display: none;">
-            <div class="alert-icon">⚠️</div>
-            <div class="alert-content">
-                <strong>Casos de Pasajeros Coincidentes Detectados (Mismo Nombre, Origen y Destino):</strong>
-                <p id="alert-coincidencias-texto">Se garantiza un identificador y localizador inequívoco para cada reserva desambiguando los pasajeros coincidentes.</p>
-            </div>
-            <button class="btn btn-sm btn-ghost" id="btn-ver-coincidencias">Ver Detalles</button>
-        </section>
-
         <!-- File Upload Card -->
         <section class="upload-section">
             <div class="upload-dropzone" id="dropzone">
@@ -104,27 +209,11 @@
                 </div>
                 <div class="upload-text">
                     <span class="upload-prompt">Arrastra o haz clic para subir un nuevo archivo <strong>.CSV</strong> de reservas</span>
-                    <span class="upload-subtext">Formato esperado: <code>id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento</code></span>
+                    <span class="upload-subtext">Formato esperado: <code>id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento</code> • Si el <code>id</code> se omite o ya existe en BD, se genera uno único automáticamente.</span>
                 </div>
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-file">Seleccionar Archivo</button>
             </div>
         </section>
-
-        <!-- Main Navigation Tabs -->
-        <nav class="nav-tabs" role="tablist">
-            <button class="tab-btn active" data-tab="tab-archivos" role="tab" id="tab-btn-archivos">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Ficheros Generados por Destino (<span id="badge-contador-archivos">0</span>)
-            </button>
-            <button class="tab-btn" data-tab="tab-reservas" role="tab" id="tab-btn-reservas">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                Listado General de Reservas (<span id="badge-contador-reservas">0</span>)
-            </button>
-            <button class="tab-btn" data-tab="tab-coincidencias" role="tab" id="tab-btn-coincidencias">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Desambiguación de Pasajeros (<span id="badge-contador-coincidencias">0</span>)
-            </button>
-        </nav>
 
         <!-- Tab 1: Ficheros Generados -->
         <main class="tab-content active" id="tab-archivos">
@@ -159,6 +248,9 @@
                     <select id="select-filtro-pais" class="select-input">
                         <option value="">Todos los países de destino</option>
                     </select>
+                    <button type="button" id="btn-vaciar-reservas" class="btn btn-outline-danger btn-sm" title="Eliminar todas las reservas de la BD (Solo Administradores)" style="display: none;">
+                        🗑️ Vaciar BD
+                    </button>
                 </div>
             </div>
 
@@ -192,6 +284,42 @@
             </div>
             <div class="coincidencias-list" id="lista-coincidencias">
                 <!-- Tarjetas de colisión inyectadas dinámicamente -->
+            </div>
+        </section>
+
+        <!-- Tab 4: Gestión de Usuarios (Exclusivo Administrador) -->
+        <section class="tab-content" id="tab-usuarios">
+            <div class="section-toolbar">
+                <div class="toolbar-search">
+                    <input type="text" id="filtro-usuarios" placeholder="Buscar usuario por username o nombre completo..." class="input-search">
+                </div>
+                <div class="toolbar-actions">
+                    <button class="btn btn-primary" id="btn-abrir-crear-usuario">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Crear Nuevo Usuario
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table class="data-table" id="tabla-usuarios">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre de Usuario (Username)</th>
+                            <th>Nombre Completo</th>
+                            <th>Rol</th>
+                            <th>Nivel de Permisos</th>
+                            <th style="text-align: right;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-usuarios">
+                        <!-- Inyectado dinámicamente -->
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -346,10 +474,67 @@
             </div>
         </div>
 
+        <!-- Modal: CREAR / EDITAR USUARIO (Exclusivo Administrador) -->
+        <div class="modal-overlay" id="modal-usuario" style="display: none;">
+            <div class="modal-container modal-md">
+                <header class="modal-header">
+                    <div>
+                        <div class="modal-badge" id="modal-usuario-badge">Administración de Cuentas</div>
+                        <h2 class="modal-title" id="modal-usuario-titulo">Crear Nuevo Usuario</h2>
+                    </div>
+                    <button class="modal-close-btn" id="btn-cerrar-modal-usuario">&times;</button>
+                </header>
+
+                <div class="modal-body">
+                    <form id="form-usuario-modal">
+                        <input type="hidden" id="input-usuario-id">
+
+                        <div class="form-field-group">
+                            <label for="input-usuario-username" class="field-label">Nombre de Usuario (Username):</label>
+                            <input type="text" id="input-usuario-username" class="input-text" placeholder="ej. supervisor, agente01" required>
+                        </div>
+
+                        <div class="form-field-group">
+                            <label for="input-usuario-nombre" class="field-label">Nombre Completo:</label>
+                            <input type="text" id="input-usuario-nombre" class="input-text" placeholder="ej. María Morales" required>
+                        </div>
+
+                        <div class="form-field-group">
+                            <label for="input-usuario-password" class="field-label" id="label-usuario-password">Contraseña:</label>
+                            <input type="password" id="input-usuario-password" class="input-text" placeholder="Introduce la contraseña">
+                            <span class="field-helper" id="hint-usuario-password">Obligatoria al crear usuario nuevo.</span>
+                        </div>
+
+                        <div class="form-field-group">
+                            <label for="select-usuario-rol" class="field-label">Rol en el Sistema:</label>
+                            <select id="select-usuario-rol" class="select-input select-full">
+                                <option value="NORMAL">NORMAL — Puede usar la página (subir CSV, ver ficheros, etc.)</option>
+                                <option value="ADMIN">ADMIN — Acceso total + Gestionar usuarios y vaciar BD</option>
+                            </select>
+                        </div>
+
+                        <div id="modal-usuario-error" class="form-error-banner" style="display: none;"></div>
+                    </form>
+                </div>
+
+                <footer class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btn-cancelar-modal-usuario">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btn-guardar-usuario">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                            <polyline points="17 21 17 13 7 13 7 21"/>
+                            <polyline points="7 3 7 8 15 8"/>
+                        </svg>
+                        Guardar Usuario
+                    </button>
+                </footer>
+            </div>
+        </div>
+
         <!-- Toast Notifications Container -->
         <div id="toast-container" class="toast-container"></div>
     </div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=20261111c"></script>
 </body>
 </html>

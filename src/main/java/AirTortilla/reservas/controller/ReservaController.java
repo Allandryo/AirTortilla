@@ -3,6 +3,7 @@ package AirTortilla.reservas.controller;
 import AirTortilla.reservas.model.*;
 import AirTortilla.reservas.service.ReservaFileService;
 import AirTortilla.reservas.service.ReservaManagerService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -33,18 +34,22 @@ public class ReservaController {
     }
 
     /**
-     * Obtiene el resumen y lista completa de reservas activas cargadas en el
-     * sistema.
+     * Obtiene el resumen y lista completa de reservas activas cargadas en la Base de Datos H2.
+     * Permite filtrar opcionalmente por país de destino directamente en la BD.
      *
+     * @param pais Código ISO opcional para filtrar por país destino (ej. 'ES', 'IT').
      * @return 200 OK con KPIs (total reservas, países, grupos coincidentes) y la
      *         lista de reservas.
      */
     @GetMapping
-    public ResponseEntity<Map<String, Object>> obtenerReservasActivas() {
-        List<Reserva> reservas = managerService.getReservasActivas();
+    public ResponseEntity<Map<String, Object>> obtenerReservasActivas(
+            @RequestParam(name = "pais", required = false) String pais) {
+        List<Reserva> reservas = (pais != null && !pais.isBlank())
+                ? managerService.getReservasPorPais(pais)
+                : managerService.getReservasActivas();
         List<GrupoCoincidenciaDto> coincidencias = managerService.obtenerCoincidenciasActivas();
 
-        long paisesDistintos = reservas.stream()
+        long paisesDistintos = managerService.getReservasActivas().stream()
                 .map(Reserva::getCodigoPaisDestino)
                 .filter(p -> p != null && !p.isBlank())
                 .distinct()
@@ -59,6 +64,17 @@ public class ReservaController {
     }
 
     /**
+     * Consulta reservas filtradas por país de destino directamente desde la base de datos relacional H2.
+     *
+     * @param codigoPais Código ISO de dos letras (ej: "ES", "IT").
+     * @return 200 OK con la lista de reservas filtradas por país.
+     */
+    @GetMapping("/pais/{codigoPais}")
+    public ResponseEntity<List<Reserva>> obtenerReservasPorPais(@PathVariable String codigoPais) {
+        return ResponseEntity.ok(managerService.getReservasPorPais(codigoPais));
+    }
+
+    /**
      * Carga un archivo CSV subido por el usuario mediante multipart/form-data.
      * Realiza el parseo, normalización y partición automática en ficheros por país
      * de destino.
@@ -68,12 +84,33 @@ public class ReservaController {
      */
     @PostMapping(value = "/subir", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> subirCsv(@RequestParam("archivo") MultipartFile archivo) {
-        List<Reserva> reservas = managerService.cargarDesdeArchivoSubido(archivo);
+        ReservaManagerService.ResultadoCargaCsv resultado = managerService.cargarDesdeArchivoSubidoConResumen(archivo);
         List<ArchivoReservaInfo> archivos = managerService.generarArchivosPorDestino();
 
+        StringBuilder mensaje = new StringBuilder("Archivo '")
+                .append(archivo.getOriginalFilename())
+                .append("' procesado: ")
+                .append(resultado.nuevasAnadidas())
+                .append(resultado.nuevasAnadidas() == 1 ? " reserva añadida" : " reservas añadidas");
+
+        if (resultado.filasOmitidas() > 0) {
+            mensaje.append(", ")
+                    .append(resultado.filasOmitidas())
+                    .append(resultado.filasOmitidas() == 1 ? " omitida por conflicto" : " omitidas por conflicto");
+        }
+        if (resultado.idsReasignados() > 0) {
+            mensaje.append(" (")
+                    .append(resultado.idsReasignados())
+                    .append(resultado.idsReasignados() == 1 ? " ID reasignado)" : " IDs reasignados)");
+        }
+
         return ResponseEntity.ok(Map.of(
-                "mensaje", "Archivo '" + archivo.getOriginalFilename() + "' procesado correctamente",
-                "totalReservas", reservas.size(),
+                "mensaje", mensaje.toString(),
+                "totalReservas", resultado.reservasActivas().size(),
+                "nuevasAnadidas", resultado.nuevasAnadidas(),
+                "filasOmitidas", resultado.filasOmitidas(),
+                "detallesOmitidas", resultado.detallesOmitidas(),
+                "idsReasignados", resultado.idsReasignados(),
                 "totalArchivosGenerados", archivos.size(),
                 "archivos", archivos));
     }
@@ -164,12 +201,31 @@ public class ReservaController {
     }
 
     /**
+     * Elimina todas las reservas de la base de datos relacional H2 y limpia
+     * los ficheros CSV generados en el directorio de salida.
+     * Exclusivo para usuarios con rol {@code ADMIN}.
+     *
+     * @return 200 OK con confirmación.
+     */
+    @DeleteMapping
+    public ResponseEntity<Map<String, Object>> vaciarReservas(HttpServletRequest request) {
+        AuthController.requerirAdministrador(request, "vaciar la base de datos");
+        managerService.vaciarReservasEnBaseDeDatos();
+        int borrados = fileService.limpiarArchivos();
+        return ResponseEntity.ok(Map.of(
+                "mensaje", "Base de datos de reservas vaciada correctamente",
+                "archivosBorrados", borrados));
+    }
+
+    /**
      * Elimina todos los archivos CSV generados en el directorio de salida.
+     * Exclusivo para usuarios con rol {@code ADMIN}.
      *
      * @return 200 OK con confirmación y total de ficheros borrados.
      */
     @DeleteMapping("/archivos")
-    public ResponseEntity<Map<String, Object>> limpiarArchivos() {
+    public ResponseEntity<Map<String, Object>> limpiarArchivos(HttpServletRequest request) {
+        AuthController.requerirAdministrador(request, "eliminar los archivos generados");
         int borrados = fileService.limpiarArchivos();
         return ResponseEntity.ok(Map.of(
                 "mensaje", "Archivos eliminados correctamente",

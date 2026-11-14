@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,18 +23,22 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Servicio encargado de generar y exportar ficheros de reservas divididos
- * exclusivamente por código ISO del país de destino.
+ * ¿QUÉ HACE ESTA CLASE? (Explicación para principiantes)
+ * 
+ * Este servicio se encarga de ESCRIBIR Y GUARDAR los archivos CSV en el disco:
  *
- * Formato de nombre exigido: "AirTortilla_XX_YYYY_MM_DD"
- * donde:
- *   XX   = Código ISO de 2 caracteres del país de destino (en mayúsculas)
- *   YYYY = Año de generación del fichero
- *   MM   = Mes de generación (2 dígitos)
- *   DD   = Día de generación (2 dígitos)
+ * 1. AGRUPACIÓN POR PAÍS DE DESTINO:
+ *    Toma la lista de reservas y las agrupa por el código ISO de su país (ej. "ES", "FR", "IT").
  *
- * Se genera UN fichero por país de destino que contiene TODAS las reservas
- * con ese destino, independientemente de su fecha de reserva individual.
+ * 2. FORMATO DEL NOMBRE DEL ARCHIVO:
+ *    Genera los ficheros con el patrón estricto:
+ *    "AirTortilla_XX_YYYY_MM_DD.csv"
+ *      * XX: Código del país en mayúsculas (ej. "FR").
+ *      * YYYY_MM_DD: Fecha del día en que se genera el archivo.
+ *
+ * 3. ESCRITURA CSV (OpenCSV):
+ *    Escribe la cabecera estándar (id, nombre_pasajero, etc.) y cada fila en formato CSV
+ *    con codificación UTF-8 para soportar tildes y caracteres especiales.
  */
 @Service
 public class ReservaExportService {
@@ -205,7 +210,7 @@ public class ReservaExportService {
      * Transforma una entidad Reserva en un array de cadenas conforme a CABECERA_CSV.
      * Utiliza Objects.toString para evitar comprobaciones manuales repetitivas de nulidad.
      */
-    private String[] convertirReservaAFilaCsv(Reserva r) {
+    public String[] convertirReservaAFilaCsv(Reserva r) {
         String fechaStr = (r.getFechaReserva() != null)
                 ? r.getFechaReserva().format(FORMATTER_FECHA_RESERVA)
                 : "";
@@ -221,5 +226,52 @@ public class ReservaExportService {
                 Objects.toString(r.getPrecio(), ""),
                 Objects.toString(r.getAsiento(), "")
         };
+    }
+
+    /**
+     * Genera la representación textual CSV en memoria para una lista de reservas (con cabecera).
+     */
+    public String generarCsvTexto(List<Reserva> reservas) {
+        StringWriter sw = new StringWriter();
+        try (CSVWriter writer = new CSVWriter(
+                sw,
+                CSVWriter.DEFAULT_SEPARATOR,
+                CSVWriter.DEFAULT_QUOTE_CHARACTER,
+                CSVWriter.DEFAULT_ESCAPE_CHARACTER,
+                CSVWriter.DEFAULT_LINE_END)) {
+            writer.writeNext(CABECERA_CSV);
+            if (reservas != null) {
+                for (Reserva r : reservas) {
+                    writer.writeNext(convertirReservaAFilaCsv(r));
+                }
+            }
+            writer.flush();
+            return sw.toString();
+        } catch (IOException e) {
+            log.error("Error al generar texto CSV en memoria", e);
+            return "";
+        }
+    }
+
+    /**
+     * Convierte una única reserva a su representación textual en formato de línea CSV.
+     */
+    public String convertirReservaALineaCsvTexto(Reserva r) {
+        if (r == null) {
+            return "";
+        }
+        StringWriter sw = new StringWriter();
+        try (CSVWriter writer = new CSVWriter(
+                sw,
+                CSVWriter.DEFAULT_SEPARATOR,
+                CSVWriter.DEFAULT_QUOTE_CHARACTER,
+                CSVWriter.DEFAULT_ESCAPE_CHARACTER,
+                "")) {
+            writer.writeNext(convertirReservaAFilaCsv(r));
+            writer.flush();
+            return sw.toString().trim();
+        } catch (IOException e) {
+            return "";
+        }
     }
 }

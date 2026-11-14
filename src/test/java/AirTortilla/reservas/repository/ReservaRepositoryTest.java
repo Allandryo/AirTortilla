@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -68,5 +69,39 @@ class ReservaRepositoryTest {
 
         List<Reserva> resultado = reservaRepository.findByNombrePasajeroContainingIgnoreCase("carlos");
         assertEquals(2, resultado.size());
+    }
+
+    @Test
+    @DisplayName("Debe lanzar DataIntegrityViolationException ante el mismo pasajero en el mismo día")
+    void testUniquePasajeroYFecha() {
+        LocalDate fecha = LocalDate.of(2026, 6, 15);
+        Reserva r1 = new Reserva("RES-U-01", "Laura Gomez", "Madrid", "Roma", "IT", fecha, "LOC-U01", 100.0, "01A");
+        Reserva r2 = new Reserva("RES-U-02", "Laura Gomez", "Barcelona", "Paris", "FR", fecha, "LOC-U02", 120.0, "02B");
+
+        reservaRepository.saveAndFlush(r1);
+        assertThrows(DataIntegrityViolationException.class, () -> reservaRepository.saveAndFlush(r2));
+    }
+
+    @Test
+    @DisplayName("Debe lanzar DataIntegrityViolationException ante el mismo asiento en el mismo vuelo y día")
+    void testUniqueVueloYAsiento() {
+        LocalDate fecha = LocalDate.of(2026, 6, 16);
+        Reserva r1 = new Reserva("RES-S-01", "Laura Gomez", "Madrid", "Roma", "IT", fecha, "LOC-S01", 100.0, "12A");
+        Reserva r2 = new Reserva("RES-S-02", "Mario Casas", "Madrid", "Roma", "IT", fecha, "LOC-S02", 100.0, "12a");
+
+        reservaRepository.saveAndFlush(r1);
+        assertThrows(DataIntegrityViolationException.class, () -> reservaRepository.saveAndFlush(r2));
+    }
+
+    @Test
+    @DisplayName("Debe lanzar DataIntegrityViolationException ante un localizador duplicado")
+    void testUniqueLocalizador() {
+        LocalDate fecha1 = LocalDate.of(2026, 6, 17);
+        LocalDate fecha2 = LocalDate.of(2026, 6, 18);
+        Reserva r1 = new Reserva("RES-L-01", "Laura Gomez", "Madrid", "Roma", "IT", fecha1, "LOC-DUP-01", 100.0, "01A");
+        Reserva r2 = new Reserva("RES-L-02", "Mario Casas", "Barcelona", "Paris", "FR", fecha2, "LOC-DUP-01", 120.0, "02B");
+
+        reservaRepository.saveAndFlush(r1);
+        assertThrows(DataIntegrityViolationException.class, () -> reservaRepository.saveAndFlush(r2));
     }
 }

@@ -1,5 +1,6 @@
 package AirTortilla.reservas.controller;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,7 +19,7 @@ import java.util.NoSuchElementException;
 public class GlobalExceptionHandler {
 
     /**
-     * Captura accesos a recursos inexistentes (ficheros no encontrados, líneas fuera de rango)
+     * Captura accesos a recursos inexistentes (ficheros no encontrados, usuarios o líneas fuera de rango)
      * y responde con código HTTP 404 Not Found.
      */
     @ExceptionHandler(NoSuchElementException.class)
@@ -36,12 +37,24 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Captura intentos de acceso a rutas no autorizadas (vulnerabilidades de Path Traversal)
+     * Captura violaciones de integridad o unicidad en base de datos (duplicados)
+     * y responde con código HTTP 409 Conflict.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> manejarIntegridad(DataIntegrityViolationException e) {
+        return buildErrorResponse(HttpStatus.CONFLICT,
+                "No se puede guardar el registro: infringe las restricciones de unicidad en la base de datos (reserva duplicada, pasajero repetido en el mismo día o asiento ocupado).");
+    }
+
+    /**
+     * Captura intentos de acceso a rutas no autorizadas o permisos insuficientes
      * y responde con código HTTP 403 Forbidden.
      */
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, Object>> manejarSeguridad(SecurityException e) {
-        return buildErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
+        String msg = e.getMessage() != null ? e.getMessage() : "Acceso no autorizado";
+        HttpStatus status = msg.toLowerCase().contains("iniciar sesión") ? HttpStatus.UNAUTHORIZED : HttpStatus.FORBIDDEN;
+        return buildErrorResponse(status, msg);
     }
 
     /**

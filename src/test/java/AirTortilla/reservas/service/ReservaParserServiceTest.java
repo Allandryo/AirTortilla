@@ -88,7 +88,7 @@ class ReservaParserServiceTest {
         String csvSinIdNiLocalizador = """
                 id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
                 ,Pedro Almodovar,Madrid,Venecia,IT,2026-08-10,,110.0,01A
-                ,Pedro Almodovar,Madrid,Venecia,IT,2026-08-10,,110.0,01B
+                ,Pedro Almodovar,Madrid,Venecia,IT,2026-08-11,,110.0,01B
                 """;
 
         List<Reserva> reservas = parserService.parsearCsvTexto(csvSinIdNiLocalizador);
@@ -104,5 +104,143 @@ class ReservaParserServiceTest {
         assertNotNull(r1.getLocalizador());
         assertNotNull(r2.getLocalizador());
         assertNotEquals(r1.getLocalizador(), r2.getLocalizador(), "Los localizadores deben ser distintos e inequívocos");
+    }
+
+    @Test
+    @DisplayName("Debe omitir una reserva duplicada exacta en todos sus campos y conservar las válidas")
+    void testOmiteReservaDuplicadaExacta() {
+        String csvDuplicado = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                """;
+
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvDuplicado.getBytes(StandardCharsets.UTF_8)),
+                List.of());
+
+        assertEquals(1, resultado.reservas().size());
+        assertEquals(1, resultado.filasOmitidas());
+        assertTrue(resultado.detallesOmitidas().getFirst().contains("duplicada"));
+    }
+
+    @Test
+    @DisplayName("Debe omitir la reserva si el mismo pasajero vuela dos veces el mismo día")
+    void testOmiteMismoPasajeroMismoDia() {
+        String csvMismoDia = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                RES-002,Carlos Santana,Barcelona,Paris,FR,2026-05-10,LOC-002,120.00,04C
+                """;
+
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvMismoDia.getBytes(StandardCharsets.UTF_8)),
+                List.of());
+
+        assertEquals(1, resultado.reservas().size());
+        assertEquals(1, resultado.filasOmitidas());
+        assertTrue(resultado.detallesOmitidas().getFirst().contains("mismo día"));
+    }
+
+    @Test
+    @DisplayName("Debe omitir la reserva si dos personas ocupan el mismo asiento en el mismo vuelo y día")
+    void testOmiteMismoAsientoMismoVueloYDia() {
+        String csvMismoAsiento = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                RES-002,Laura Gomez,Madrid,Roma,IT,2026-05-10,LOC-002,150.00,12a
+                """;
+
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvMismoAsiento.getBytes(StandardCharsets.UTF_8)),
+                List.of());
+
+        assertEquals(1, resultado.reservas().size());
+        assertEquals(1, resultado.filasOmitidas());
+        assertTrue(resultado.detallesOmitidas().getFirst().contains("asiento"));
+    }
+
+    @Test
+    @DisplayName("Debe seguir leyendo el archivo si la primera fila coincide con la BD y guardar solo las filas válidas")
+    void testContinuaLeyendoTrasPrimeraFilaConflictiva() {
+        String csvInicial = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                """;
+        List<Reserva> existentesEnBd = parserService.parsearCsvTexto(csvInicial);
+
+        String csvMixto = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                RES-002,Elena Morales,Sevilla,Lisboa,PT,2026-06-15,LOC-002,95.00,07F
+                RES-003,Marta Sanchez,Madrid,Roma,IT,2026-05-10,LOC-003,150.00,12A
+                RES-001,Lucia Fernandez,Barcelona,Berlin,DE,2026-07-20,LOC-004,210.00,08C
+                RES-005,Mario Casas,Valencia,Paris,FR,2026-08-22,LOC-001,140.00,09D
+                """;
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvMixto.getBytes(StandardCharsets.UTF_8)),
+                existentesEnBd);
+
+        assertEquals(2, resultado.reservas().size(), "Debe guardar filas 2 y 4");
+        assertEquals(3, resultado.filasOmitidas(), "Debe omitir filas 1 (duplicada), 3 (asiento ocupado) y 5 (localizador repetido)");
+        assertEquals(1, resultado.idsReasignados(), "Debe reasignar RES-001 de fila 4 porque fila 1 fue omitida y RES-001 ya existía en BD");
+        assertEquals("Elena Morales", resultado.reservas().get(0).getNombrePasajero());
+        assertEquals("Lucia Fernandez", resultado.reservas().get(1).getNombrePasajero());
+        assertNotEquals("RES-001", resultado.reservas().get(1).getId());
+        assertEquals("LOC-004", resultado.reservas().get(1).getLocalizador());
+    }
+
+    @Test
+    @DisplayName("Debe reasignar automáticamente ID si ya existe en BD manteniendo un localizador nuevo válido")
+    void testReasignacionAutomaticaIdExistenteConLocalizadorNuevo() {
+        String csvInicial = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                """;
+        List<Reserva> existentesEnBd = parserService.parsearCsvTexto(csvInicial);
+
+        String csvOtroUsuario = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Lucia Fernandez,Barcelona,Berlin,DE,2026-07-20,LOC-NEW-01,210.00,08C
+                """;
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvOtroUsuario.getBytes(StandardCharsets.UTF_8)),
+                existentesEnBd
+        );
+
+        assertEquals(1, resultado.reservas().size());
+        assertEquals(1, resultado.idsReasignados());
+
+        Reserva nueva = resultado.reservas().getFirst();
+        assertNotEquals("RES-001", nueva.getId(), "El ID colisionado debe reasignarse automáticamente");
+        assertEquals("LOC-NEW-01", nueva.getLocalizador(), "El localizador único nuevo debe respetarse");
+        assertEquals("Lucia Fernandez", nueva.getNombrePasajero());
+    }
+
+    @Test
+    @DisplayName("Debe omitir reservas cuyo localizador ya exista en la BD o en filas previas del mismo CSV")
+    void testOmitirReservaPorLocalizadorExistente() {
+        String csvInicial = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-001,Carlos Santana,Madrid,Roma,IT,2026-05-10,LOC-001,150.00,12A
+                """;
+        List<Reserva> existentesEnBd = parserService.parsearCsvTexto(csvInicial);
+
+        String csvConLocalizadorRepetido = """
+                id,nombre_pasajero,origen,destino,pais_destino,fecha_reserva,localizador,precio,asiento
+                RES-010,Lucia Fernandez,Barcelona,Berlin,DE,2026-07-20,LOC-001,210.00,08C
+                RES-011,Elena Morales,Sevilla,Lisboa,PT,2026-08-15,LOC-011,95.00,07F
+                RES-012,Mario Casas,Valencia,Paris,FR,2026-09-01,loc-011,130.00,11A
+                """;
+        ReservaParserService.ResultadoParseo resultado = parserService.parsearConResumen(
+                new ByteArrayInputStream(csvConLocalizadorRepetido.getBytes(StandardCharsets.UTF_8)),
+                existentesEnBd
+        );
+
+        assertEquals(1, resultado.reservas().size());
+        assertEquals("Elena Morales", resultado.reservas().getFirst().getNombrePasajero());
+        assertEquals(2, resultado.filasOmitidas());
+        assertTrue(resultado.detallesOmitidas().get(0).contains("localizador"));
+        assertTrue(resultado.detallesOmitidas().get(1).contains("localizador"));
     }
 }

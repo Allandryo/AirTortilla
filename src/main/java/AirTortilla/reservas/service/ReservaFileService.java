@@ -5,13 +5,12 @@ import AirTortilla.reservas.model.ArchivoReservaInfo;
 import AirTortilla.reservas.model.GrupoCoincidenciaDto;
 import AirTortilla.reservas.model.LineaReservaDto;
 import AirTortilla.reservas.model.Reserva;
+import AirTortilla.reservas.repository.ReservaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,50 +25,101 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Servicio encargado de gestionar los archivos generados y proporcionar
- * las consultas en modalidad TOTAL y en modalidad LÍNEA A LÍNEA.
+ * ¿QUÉ HACE ESTA CLASE? (Explicación para principiantes)
+ * 
+ * Este servicio gestiona las consultas de los archivos CSV generados por país:
+ *
+ * 1. LISTAR ARCHIVOS:
+ * Permite a la interfaz web saber qué archivos existen (ej:
+ * AirTortilla_ES_2026_11_11.csv).
+ *
+ * 2. MODALIDAD TOTAL:
+ * Devuelve todas las reservas de un país en un solo bloque, leyendo
+ * preferentemente
+ * de la Base de Datos H2 (rápido y actualizado), o desde el archivo físico si
+ * no hay BD.
+ *
+ * 3. MODALIDAD LÍNEA A LÍNEA:
+ * Permite al usuario examinar una fila concreta (por ejemplo, "Fila 3 de 10") y
+ * navegar con botones "Anterior" y "Siguiente".
+ *
+ * 4. SEGURIDAD:
+ * Valida que los nombres de archivo no contengan caracteres peligrosos como
+ * ".." o "/"
+ * para evitar ataques de acceso a archivos no autorizados (Path Traversal).
  */
 @Service
 public class ReservaFileService {
 
     private static final Logger log = LoggerFactory.getLogger(ReservaFileService.class);
-    private static final Pattern FILENAME_PATTERN = Pattern.compile("^AirTortilla_([A-Za-z0-9]+)(?:_(\\d{4})_(\\d{2})_(\\d{2}))?\\.csv$");
+
+    // Expresión regular para extraer el país y la fecha del nombre del archivo:
+    // Ejemplo: "AirTortilla_IT_2026_11_11.csv" -> Grupo 1: "IT", Grupo 2..4:
+    // "2026", "11", "11"
+    private static final Pattern FILENAME_PATTERN = Pattern
+            .compile("^AirTortilla_([A-Za-z0-9]+)(?:_(\\d{4})_(\\d{2})_(\\d{2}))?\\.csv$");
 
     private final ReservaExportService exportService;
     private final ReservaParserService parserService;
-
-    public record InfoNombreArchivo(String pais, LocalDate fecha) {}
-
-    public ReservaFileService(ReservaExportService exportService, ReservaParserService parserService) {
-        this.exportService = exportService;
-        this.parserService = parserService;
-    }
+    private final ReservaRepository reservaRepository;
 
     /**
-     * Valida el nombre del archivo para prevenir vulnerabilidades de Path Traversal
-     * y garantiza que el archivo resida dentro del directorio autorizado.
-     *
-     * @param nombreArchivo Nombre simple del fichero a resolver.
-     * @return Path normalizado y verificado del archivo.
+     * Información básica extraída del nombre de un archivo CSV.
+     */
+    public record InfoNombreArchivo(String pais, LocalDate fecha) {
+    }
+
+    @Autowired
+    public ReservaFileService(ReservaExportService exportService,
+            ReservaParserService parserService,
+            @Autowired(required = false) ReservaRepository reservaRepository) {
+        this.exportService = exportService;
+        this.parserService = parserService;
+        this.reservaRepository = reservaRepository;
+    }
+
+    public ReservaFileService(ReservaExportService exportService, ReservaParserService parserService) {
+        this(exportService, parserService, null);
+    }
+
+    // SECCIÓN 1
+    /**
+     * Valida y obtiene la ruta física en disco de un archivo CSV en la carpeta
+     * autorizada.
+     * Si no existe en disco pero sí hay reservas en la BD, lo genera al vuelo.
      */
     public Path resolverArchivo(String nombreArchivo) {
-        if (nombreArchivo == null || nombreArchivo.contains("..") || nombreArchivo.contains("/") || nombreArchivo.contains("\\")) {
+        // Validación de seguridad para evitar salir de la carpeta autorizada
+        if (nombreArchivo == null || nombreArchivo.contains("..") || nombreArchivo.contains("/")
+                || nombreArchivo.contains("\\")) {
             throw new IllegalArgumentException("Nombre de archivo inválido o peligroso: " + nombreArchivo);
         }
+
         Path path = exportService.getDirectorioSalida().resolve(nombreArchivo).normalize();
         if (!path.startsWith(exportService.getDirectorioSalida())) {
             throw new SecurityException("Acceso denegado a ruta no autorizada");
         }
+
+        // Si el archivo físico no existe en disco, intentamos regenerarlo desde la BD
         if (!Files.exists(path)) {
+            if (reservaRepository != null) {
+                InfoNombreArchivo info = parsearInfoDesdeNombre(nombreArchivo);
+                List<Reserva> reservas = reservaRepository.findByCodigoPaisDestino(info.pais());
+                if (!reservas.isEmpty()) {
+                    exportService.exportarArchivosPorDestinoYFecha(reservas);
+                    if (Files.exists(path)) {
+                        return path;
+                    }
+                }
+            }
             throw new NoSuchElementException("El archivo no existe: " + nombreArchivo);
         }
+
         return path;
     }
 
     /**
-     * Lista todos los archivos CSV generados con sus metadatos asociados.
-     *
-     * @return Lista ordenada cronológicamente de archivos generados.
+     * Lista todos los archivos CSV disponibles en la carpeta de salida.
      */
     public List<ArchivoReservaInfo> listarArchivos() {
         Path dir = exportService.getDirectorioSalida();
@@ -92,12 +142,10 @@ public class ReservaFileService {
 
     private boolean esArchivoCsvValido(Path p) {
         String nombre = p.getFileName().toString();
-        return nombre.startsWith(ReservaExportService.PREFIJO_ARCHIVO) && nombre.endsWith(ReservaExportService.EXTENSION_CSV);
+        return nombre.startsWith(ReservaExportService.PREFIJO_ARCHIVO)
+                && nombre.endsWith(ReservaExportService.EXTENSION_CSV);
     }
 
-    /**
-     * Construye los metadatos de un archivo CSV inspeccionando sus atributos del sistema de archivos.
-     */
     private Optional<ArchivoReservaInfo> construirInfoArchivo(Path path) {
         try {
             String nombre = path.getFileName().toString();
@@ -105,9 +153,16 @@ public class ReservaFileService {
 
             long tamano = Files.size(path);
             BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
-            LocalDateTime fechaGen = LocalDateTime.ofInstant(attr.lastModifiedTime().toInstant(), ZoneId.systemDefault());
+            LocalDateTime fechaGen = LocalDateTime.ofInstant(attr.lastModifiedTime().toInstant(),
+                    ZoneId.systemDefault());
 
-            int totalReservas = contarLineasDeDatos(path);
+            int totalReservas;
+            if (reservaRepository != null) {
+                List<Reserva> enBd = reservaRepository.findByCodigoPaisDestino(metaNombre.pais());
+                totalReservas = !enBd.isEmpty() ? enBd.size() : contarLineasDeDatos(path);
+            } else {
+                totalReservas = contarLineasDeDatos(path);
+            }
 
             return Optional.of(new ArchivoReservaInfo(
                     nombre,
@@ -115,8 +170,7 @@ public class ReservaFileService {
                     metaNombre.fecha(),
                     totalReservas,
                     tamano,
-                    fechaGen
-            ));
+                    fechaGen));
         } catch (IOException e) {
             log.warn("No se pudieron leer los atributos de {}", path, e);
             return Optional.empty();
@@ -133,8 +187,8 @@ public class ReservaFileService {
     }
 
     /**
-     * Extrae el código de país y la fecha a partir del patrón de nomenclatura:
-     * AirTortilla_XX_YYYY_MM_DD.csv
+     * Extrae el código de país y la fecha a partir del nombre del archivo:
+     * "AirTortilla_IT_2026_11_11.csv" -> País "IT", Fecha 2026-11-11
      */
     public InfoNombreArchivo parsearInfoDesdeNombre(String nombreArchivo) {
         Matcher matcher = FILENAME_PATTERN.matcher(nombreArchivo);
@@ -153,11 +207,53 @@ public class ReservaFileService {
         return new InfoNombreArchivo(pais, fecha);
     }
 
+    // SECCIÓN 2
     /**
-     * Consulta un archivo en MODALIDAD TOTAL.
-     * Retorna todas las reservas parseadas, el texto CSV crudo y los grupos de coincidencias.
+     * Consulta todas las reservas de un país (Modalidad Total).
+     * Lee directamente desde la Base de Datos H2 para máxima velocidad y
+     * coherencia.
      */
     public ArchivoDetalleDto consultarArchivoTotal(String nombreArchivo) {
+        InfoNombreArchivo metaNombre = parsearInfoDesdeNombre(nombreArchivo);
+        String paisIso = metaNombre.pais();
+
+        // 1. Lectura prioritaria desde la BASE DE DATOS H2
+        if (reservaRepository != null) {
+            List<Reserva> reservasBd = reservaRepository.findByCodigoPaisDestino(paisIso);
+            if (!reservasBd.isEmpty()) {
+                log.info("Consultando archivo total '{}' directamente desde la BD H2 ({} reservas)", nombreArchivo,
+                        reservasBd.size());
+
+                List<GrupoCoincidenciaDto> grupos = parserService.analizarCoincidencias(reservasBd);
+                String contenidoRaw = exportService.generarCsvTexto(reservasBd);
+
+                Path path = exportService.getDirectorioSalida().resolve(nombreArchivo).normalize();
+                ArchivoReservaInfo info;
+                if (Files.exists(path)) {
+                    info = construirInfoArchivo(path)
+                            .orElseGet(() -> new ArchivoReservaInfo(
+                                    nombreArchivo,
+                                    paisIso,
+                                    metaNombre.fecha(),
+                                    reservasBd.size(),
+                                    contenidoRaw.getBytes(StandardCharsets.UTF_8).length,
+                                    LocalDateTime.now()));
+                } else {
+                    info = new ArchivoReservaInfo(
+                            nombreArchivo,
+                            paisIso,
+                            metaNombre.fecha(),
+                            reservasBd.size(),
+                            contenidoRaw.getBytes(StandardCharsets.UTF_8).length,
+                            LocalDateTime.now());
+                }
+
+                return new ArchivoDetalleDto(info, reservasBd, contenidoRaw, grupos);
+            }
+        }
+
+        // 2. Fallback: Si no hay repositorio o la BD está vacía, leer del archivo
+        // físico en disco
         Path path = resolverArchivo(nombreArchivo);
         try {
             String contenidoRaw = Files.readString(path, StandardCharsets.UTF_8);
@@ -165,7 +261,8 @@ public class ReservaFileService {
             List<GrupoCoincidenciaDto> grupos = parserService.analizarCoincidencias(reservas);
 
             ArchivoReservaInfo info = construirInfoArchivo(path)
-                    .orElseThrow(() -> new NoSuchElementException("No se pudo obtener información de " + nombreArchivo));
+                    .orElseThrow(
+                            () -> new NoSuchElementException("No se pudo obtener información de " + nombreArchivo));
 
             return new ArchivoDetalleDto(info, reservas, contenidoRaw, grupos);
         } catch (IOException e) {
@@ -174,14 +271,60 @@ public class ReservaFileService {
         }
     }
 
+    // SECCIÓN 3
     /**
-     * Consulta un archivo en MODALIDAD LÍNEA A LÍNEA.
+     * Consulta una fila específica de un archivo (Modalidad Línea a Línea).
+     * Permite examinar la reserva registro a registro.
      *
      * @param nombreArchivo Nombre del fichero CSV.
-     * @param numeroLinea Índice 1-based de la fila de datos solicitada (sin incluir cabecera).
-     * @return DTO con la línea solicitada, datos de navegación y análisis de colisión.
+     * @param numeroLinea   Número de fila solicitada (1 para la primera fila de
+     *                      datos).
      */
     public LineaReservaDto consultarArchivoLinea(String nombreArchivo, int numeroLinea) {
+        InfoNombreArchivo metaNombre = parsearInfoDesdeNombre(nombreArchivo);
+        String paisIso = metaNombre.pais();
+
+        // 1. Lectura prioritaria desde la BASE DE DATOS H2
+        if (reservaRepository != null) {
+            List<Reserva> reservasBd = reservaRepository.findByCodigoPaisDestino(paisIso);
+            if (!reservasBd.isEmpty()) {
+                int totalLineas = reservasBd.size();
+                int lineaAjustada = Math.max(1, Math.min(numeroLinea, totalLineas));
+                Reserva reserva = reservasBd.get(lineaAjustada - 1);
+
+                log.info("Consultando línea {}/{} de '{}' directamente desde la BD H2", lineaAjustada, totalLineas,
+                        nombreArchivo);
+
+                String lineaRaw = exportService.convertirReservaALineaCsvTexto(reserva);
+
+                // Comprobar si esta reserva forma parte de un grupo de coincidencia
+                List<GrupoCoincidenciaDto> grupos = parserService.analizarCoincidencias(reservasBd);
+                String clave = reserva.getClaveCoincidencia();
+                boolean esCoincidente = false;
+                int totalCoincidentes = 1;
+
+                for (GrupoCoincidenciaDto g : grupos) {
+                    if (g.getClave().equals(clave)) {
+                        esCoincidente = true;
+                        totalCoincidentes = g.getTotalCoincidentes();
+                        break;
+                    }
+                }
+
+                return new LineaReservaDto(
+                        nombreArchivo,
+                        lineaAjustada,
+                        totalLineas,
+                        lineaRaw,
+                        reserva,
+                        lineaAjustada > 1, // tieneAnterior
+                        lineaAjustada < totalLineas, // tieneSiguiente
+                        esCoincidente,
+                        totalCoincidentes);
+            }
+        }
+
+        // 2. Fallback: Leer desde el archivo físico en disco
         Path path = resolverArchivo(nombreArchivo);
         List<String> todasLasLineas = leerLineasSeguro(path);
 
@@ -193,14 +336,10 @@ public class ReservaFileService {
             throw new NoSuchElementException("El archivo no contiene filas de datos");
         }
 
-        // Clamping: asegura que el índice esté estrictamente en el intervalo [1, totalLineas]
-        int lineaAjustada = Math.clamp(numeroLinea, 1, totalLineas);
+        int lineaAjustada = Math.max(1, Math.min(numeroLinea, totalLineas));
         String lineaRaw = lineasDatos.get(lineaAjustada - 1);
 
-        // Parsear la fila requerida para obtener la entidad Reserva
         Reserva reserva = parsearFilaIndividual(cabecera, lineaRaw);
-
-        // Analizar si esta reserva particular forma parte de una colisión de datos
         ResultadoCoincidenciaLinea colision = verificarCoincidenciaFila(reserva, todasLasLineas);
 
         return new LineaReservaDto(
@@ -212,8 +351,7 @@ public class ReservaFileService {
                 lineaAjustada > 1,
                 lineaAjustada < totalLineas,
                 colision.esCoincidente(),
-                colision.totalCoincidentes()
-        );
+                colision.totalCoincidentes());
     }
 
     private List<String> leerLineasSeguro(Path path) {
@@ -234,14 +372,16 @@ public class ReservaFileService {
         return !listaSingle.isEmpty() ? listaSingle.getFirst() : null;
     }
 
-    private record ResultadoCoincidenciaLinea(boolean esCoincidente, int totalCoincidentes) {}
+    private record ResultadoCoincidenciaLinea(boolean esCoincidente, int totalCoincidentes) {
+    }
 
     private ResultadoCoincidenciaLinea verificarCoincidenciaFila(Reserva reserva, List<String> todasLasLineas) {
         if (reserva == null) {
             return new ResultadoCoincidenciaLinea(false, 1);
         }
 
-        List<Reserva> todasReservas = parserService.parsearCsvTexto(String.join(System.lineSeparator(), todasLasLineas));
+        List<Reserva> todasReservas = parserService
+                .parsearCsvTexto(String.join(System.lineSeparator(), todasLasLineas));
         List<GrupoCoincidenciaDto> grupos = parserService.analizarCoincidencias(todasReservas);
 
         String clave = reserva.getClaveCoincidencia();
@@ -253,8 +393,9 @@ public class ReservaFileService {
         return new ResultadoCoincidenciaLinea(false, 1);
     }
 
+    // SECCIÓN 4
     /**
-     * Limpia los archivos generados en el directorio de salida.
+     * Elimina todos los archivos CSV generados en la carpeta de salida.
      *
      * @return Cantidad de archivos eliminados.
      */
